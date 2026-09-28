@@ -1,0 +1,15 @@
+﻿# Entorno virtual de Python
+.venv/
+
+# Motor de OCR descargado aparte
+tesseract/
+
+# Restos de Python
+__pycache__/
+*.pyc
+
+# Registro de la aplicacion
+logs/
+
+# Respaldos que genera el asistente
+_excelagent_respaldos/
