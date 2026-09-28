@@ -61,13 +61,16 @@ class Ventana:
         self.img_enviar = None
         self.img_detener = None
         self.trabajando_antes = False
+        self.cerrando = False
+        self.tarea_after = None
         self._cargar_iconos()
         self.raiz.minsize(720, 420)
         self._preparar_log()
         self._construir()
         self._instalar_manejadores()
         self._arrancar_trabajador()
-        self.raiz.after(120, self._procesar_eventos)
+        self.raiz.bind("<Destroy>", self._al_soltar)
+        self._agendar_eventos()
         self.raiz.protocol('WM_DELETE_WINDOW', self._al_cerrar)
         self.bus.log('Interfaz lista. Elegi un libro con el boton Abrir Excel.', 'ok')
 
@@ -311,7 +314,28 @@ class Ventana:
             self._error_interno('Fallo el bucle de eventos: ' + str(exc))
         finally:
             self._actualizar_botones()
-            self.raiz.after(120, self._procesar_eventos)
+            self._agendar_eventos()
+
+    def _agendar_eventos(self):
+        # Reprograma el repaso de eventos; se detiene si la ventana ya se solto.
+        if self.cerrando:
+            return
+        try:
+            self.tarea_after = self.raiz.after(120, self._procesar_eventos)
+        except Exception:
+            self.cerrando = True
+
+    def _al_soltar(self, evento=None):
+        # Al soltarse la ventana se cancela el repaso pendiente.
+        if evento is not None and str(evento.widget) != str(self.raiz):
+            return
+        self.cerrando = True
+        if self.tarea_after is not None:
+            try:
+                self.raiz.after_cancel(self.tarea_after)
+            except Exception:
+                pass
+            self.tarea_after = None
 
     def _vigilar_espera(self):
         # Avisa solo si no hay novedades: eso es lo que indica que algo quedo trabado.

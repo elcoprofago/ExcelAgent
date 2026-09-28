@@ -187,8 +187,11 @@ def test_boton_alterna_entre_enviar_y_detener():
         imagen_ocupado = str(v.boton_principal.cget("image"))
         assert imagen_libre != imagen_ocupado
         v.boton_principal.invoke()
-        tarea = v.peticiones.get_nowait()
-        assert tarea[0] == "detener"
+        fin = gui.time.time() + 3
+        while gui.time.time() < fin and not v.agente.sesion.detener.is_set():
+            v.raiz.update()
+            gui.time.sleep(0.05)
+        assert v.agente.sesion.detener.is_set()
     finally:
         v.raiz.destroy()
 
