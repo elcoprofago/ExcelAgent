@@ -1,6 +1,5 @@
-# Copiado de DeepSeekChat/test_dsapi.py (29/9/2026) para probar el modulo copiado. Lo adaptado lleva 'ExcelAgent:'.
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))  # ExcelAgent
-"""Pruebas de la capa de API. Uso: python test_dsapi.py   (con DEEPSEEK_API_KEY para las pruebas en vivo)."""
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+"""Pruebas de la capa de API. Uso: python chk_dsapi.py   (con DEEPSEEK_API_KEY para las pruebas en vivo)."""
 import json
 import os
 import sys
@@ -18,7 +17,7 @@ def check(nombre, cond, detalle=""):
         fallas.append(nombre)
 
 
-tmp = tempfile.mkdtemp(prefix="dschat_test_")
+tmp = tempfile.mkdtemp(prefix="excelagent_test_")
 
 # --- DPAPI: ida y vuelta, y control de que el texto plano NO queda en el archivo
 c = dsapi.Config(os.path.join(tmp, "cfg"))
@@ -39,7 +38,7 @@ with open(os.path.join(d, "config.json"), "w", encoding="utf-8") as f:
 c3 = dsapi.Config(d)
 check("config dañada: avisa", "dañada" in c3.load_warning)
 check("config dañada: conserva copia", os.path.exists(os.path.join(d, "config.json.dañado")))
-check("config dañada: usa defaults", c3["model"] == "deepseek-flash")  # ExcelAgent: otro modelo por defecto
+check("config dañada: usa defaults", c3["model"] == "deepseek-flash")  # otro modelo por defecto
 
 # --- un 500 dice de qué servidor vino: el del modelo local no es "de DeepSeek" (servidor HTTP real en 127.0.0.1)
 import http.server  # noqa: E402

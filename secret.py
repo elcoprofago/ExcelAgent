@@ -1,4 +1,3 @@
-# Copiado de DeepSeekChat 1.0.0.7 (commit 793fe17). Los cambios propios de ExcelAgent llevan la marca «ExcelAgent:».
 """Cifrado de la API key con una contraseña, para el modo portable (la DPAPI de Windows ata la key a una instalación
 de Windows concreta y no sirve al mover el pendrive de una PC a otra).
 

@@ -19,7 +19,7 @@ $carpetas = @(
     (Join-Path $proyecto 'excelagent')
     (Join-Path $proyecto '__pycache__')
     (Join-Path $proyecto 'tests\__pycache__')
-    (Join-Path $proyecto 'tests\de_deepseekchat\__pycache__')
+    (Join-Path $proyecto 'tests\modulos\__pycache__')
     (Join-Path $env:TEMP 'ea_build')
 )
 $carpetas += @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'contactos_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })

@@ -4,13 +4,13 @@ import sys
 
 import pytest
 
-# Las pruebas de los modulos copiados de DeepSeekChat (dsapi, secret, meter, localmodels) son scripts que
+# Las pruebas de dsapi, secret, meter y localmodels son scripts que
 # informan por codigo de salida: se corren aparte, cada uno con su propia carpeta de configuracion.
-CARPETA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'de_deepseekchat')
+CARPETA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'modulos')
 
 
 @pytest.mark.parametrize('nombre', ['meter', 'config', 'dsapi', 'retry', 'local'])
-def test_script_de_deepseekchat(nombre, tmp_path):
+def test_script_de_modulo(nombre, tmp_path):
     env = dict(os.environ, EXCELAGENT_CONFIG_DIR=str(tmp_path / 'cfg'), PYTHONDONTWRITEBYTECODE='1',
                PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
     r = subprocess.run([sys.executable, os.path.join(CARPETA, 'chk_' + nombre + '.py')], capture_output=True,

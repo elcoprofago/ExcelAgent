@@ -6,7 +6,7 @@ mira el libro abierto y lo resuelve con herramientas concretas sobre Excel, expl
 
 El modelo puede ser:
 
-- DeepSeek por API key (pago por token), igual que en DeepSeekChat. Es el recomendado.
+- DeepSeek por API key (pago por token). Es el recomendado.
 - Un modelo local .gguf servido con llama-server, si la PC lo soporta. Funciona sin internet, pero los modelos
   chicos (medido con Qwen3-4B y Qwen3.5-9B) se equivocan seguido al usar herramientas: ver "Modelos locales".
 
@@ -39,8 +39,6 @@ Boton **Configuracion** (se guarda solo al cerrar la ventana):
 
 - **API key**: la de DeepSeek (platform.deepseek.com, saldo prepago). Nunca se guarda en claro: cifrada con el
   usuario de Windows o con una contrasena, a eleccion.
-- **Importar de DeepSeekChat**: copia la key y los ajustes de modelos locales de
-  `%APPDATA%\DeepSeekChat\config.json`. La key no pasa por la pantalla.
 - **Modelos locales**: carpetas donde buscar `.gguf`, ruta de `llama-server.exe`, contexto con que se arranca.
 - **Avanzado**: permisos, maximo de tokens por respuesta y presupuesto de tokens de la jornada (el 100% de la
   barra de consumo).
@@ -105,7 +103,12 @@ trabaja con una instancia nueva. Para volver a la original: destrabala en Excel 
 
 ## Modelos locales
 
-Se arrancan con llama-server al primer pedido y se apagan al salir. Pruebas reales del
+Se arrancan con llama-server al primer pedido y se apagan al salir. ExcelAgent no depende de ningun otro
+programa: `llama-server.exe` y sus DLL van en `..\bin` (fuera del repo, como `..\tesseract`) o en `bin\` junto al
+programa, o se elige la ruta en Configuracion. Los modelos se buscan en `Models\` junto al programa, en su carpeta
+padre y en la raiz de la unidad; otras carpetas se agregan en Configuracion.
+
+En esta PC, `..\bin` tiene llama-server b9775 con CUDA (678 MB). Pruebas reales del
 29/09/2026 con el mismo pedido coloquial (ordenar, formatear como moneda, poner un total):
 
 - DeepSeek Flash: todo correcto, 8 herramientas, unos 24.000 tokens de entrada.
@@ -122,24 +125,24 @@ Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`).
     ..\.venv\Scripts\python.exe -m pytest tests -q
 
 - Abren Excel sin ventana y trabajan con libros de juguete en una carpeta temporal. Tardan unos dos minutos.
-- `tests\de_deepseekchat\`: los chequeos de la API, la configuracion, el medidor y los modelos locales traidos de
-  DeepSeekChat, adaptados. El de modelos locales usa archivos .gguf falsos dispersos (no ocupan disco) y los borra
-  aunque la prueba muera a mitad de camino.
+- `tests\modulos\`: chequeos de la API, la configuracion, el medidor y los modelos locales, que se corren como
+  scripts aparte (`test_modulos.py` los lanza). El de modelos locales usa archivos .gguf falsos dispersos (no
+  ocupan disco) y los borra aunque la prueba muera a mitad de camino.
 - No usan la API key real ni gastan tokens: el modelo se reemplaza por un guion.
 - La prueba de graficos fallo una vez de cada varias corridas sin causa encontrada; repetida, pasa.
 
 ## Estructura
 
     gui.py            Interfaz tkinter
-    dialogos.py       Configuracion, API key, importar de DeepSeekChat, aprobaciones
+    dialogos.py       Configuracion, API key, permisos
     asistente.py      Une la GUI con el modelo elegido y con Excel; cuenta tokens
     agente.py         Bucle modelo -> herramientas -> modelo, con freno ante repeticiones
     prompts.py        Instrucciones del asesor
     herramientas.py   Las herramientas que el modelo puede usar sobre Excel
     excel.py          Sesion COM con Excel, respaldos, adjuntos, OCR, Outlook
-    dsapi.py          API de DeepSeek y configuracion (de DeepSeekChat)
-    localmodels.py    Modelos .gguf con llama-server (de DeepSeekChat)
-    meter.py          Medidor de tokens (de DeepSeekChat)
-    secret.py         Cifrado de la key (de DeepSeekChat)
+    dsapi.py          API de DeepSeek y configuracion
+    localmodels.py    Modelos .gguf con llama-server
+    meter.py          Medidor de tokens
+    secret.py         Cifrado de la key con contrasena
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
     tests\            Pruebas

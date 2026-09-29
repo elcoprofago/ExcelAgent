@@ -298,7 +298,7 @@ class Ventana:
             self.bus.log('La API key esta guardada con contraseña: te la pido para desbloquearla.', 'warn')
             self.raiz.after(300, lambda: dialogos.UnlockDialog(self))
         else:
-            self.bus.log('Sin API key de DeepSeek: cargala en Configuracion (o importala de DeepSeekChat), '
+            self.bus.log('Sin API key de DeepSeek: cargala en Configuracion, '
                          'o elegi un modelo [local].', 'warn')
 
     def _buscar_locales(self):
@@ -766,7 +766,7 @@ class Ventana:
         self.log.configure(state='disabled')
 
     def _cargar_iconos(self):
-        # Iconos de enviar y detener, traidos de DeepSeekChat a la carpeta assets.
+        # Iconos de enviar y detener, en la carpeta assets.
         try:
             if os.path.isfile(IMG_ENVIAR):
                 self.img_enviar = tk.PhotoImage(file=IMG_ENVIAR)
@@ -778,7 +778,7 @@ class Ventana:
             self._error_interno('No pude cargar los iconos: ' + str(exc), 'warn')
 
     def _enviar_o_detener(self):
-        # El mismo boton hace las dos cosas, como en DeepSeekChat.
+        # El mismo boton hace las dos cosas.
         if self.ocupado_desde is not None or self.en_pedido:
             self._detener()
             return

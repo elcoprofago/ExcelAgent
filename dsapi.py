@@ -1,4 +1,3 @@
-# Copiado de DeepSeekChat 1.0.0.7 (commit 793fe17). Los cambios propios de ExcelAgent llevan la marca «ExcelAgent:».
 """Acceso a la API de DeepSeek y configuración local. Sin dependencias externas.
 
 Todo lo que no es ventana vive acá, para poder probarlo sin abrir la interfaz.
@@ -385,7 +384,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def portable_root():
     """Carpeta raíz del programa si corre en modo portable (marcado por un archivo 'portable.flag' en la carpeta de
-    la app o en su padre, que es donde lo deja build_portable.py); None si corre instalado / desde el repositorio."""
+    la app o en su padre, para llevarlo en un pendrive con la configuracion al lado); None si corre instalado / desde el repositorio."""
     for d in (APP_DIR, os.path.dirname(APP_DIR)):
         if os.path.isfile(os.path.join(d, "portable.flag")):
             return d
@@ -393,7 +392,7 @@ def portable_root():
 
 
 class Config:
-    # ExcelAgent: solo los ajustes que usa ExcelAgent (sin tema, sesiones, barra lateral ni acceso remoto).
+    # los ajustes del programa y sus valores por defecto.
     DEFAULTS = {
         "model": "deepseek-flash",
         "effort": "",
@@ -410,9 +409,9 @@ class Config:
     def __init__(self, directory=None):
         self.root = None if directory else portable_root()
         self.portable = self.root is not None
-        self.dir = directory or os.environ.get("EXCELAGENT_CONFIG_DIR") or (  # ExcelAgent: adaptado
+        self.dir = directory or os.environ.get("EXCELAGENT_CONFIG_DIR") or (
             os.path.join(self.root, "data") if self.root else
-            os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "ExcelAgent"))  # ExcelAgent: adaptado
+            os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "ExcelAgent"))
         os.makedirs(self.dir, exist_ok=True)
         self.path = os.path.join(self.dir, "config.json")
         self.load_warning = ""

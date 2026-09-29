@@ -1,5 +1,4 @@
-# Copiado de DeepSeekChat/test_config.py (29/9/2026) para probar el modulo copiado. Lo adaptado lleva 'ExcelAgent:'.
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))  # ExcelAgent
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
 """Configuración portable y key con contraseña. Sin red."""
 import os
 import shutil
@@ -66,7 +65,7 @@ check("contraseña vacía rechazada", vacia)
 check("key larga y con unicode", secret.decrypt(secret.encrypt("ñ" * 500, "p"), "p") == "ñ" * 500)
 
 # ---- Config en modo instalado (carpeta explícita: no es portable)
-d = tempfile.mkdtemp(prefix="dschat_cfg_")
+d = tempfile.mkdtemp(prefix="excelagent_cfg_")
 c = dsapi.Config(os.path.join(d, "inst"))
 check("con carpeta explícita no es portable", not c.portable and c.key_mode == "none" and c.api_key == "")
 c.set_api_key(KEY)
@@ -98,7 +97,7 @@ root = os.path.join(d, "Prog con espacios ñ")
 app = os.path.join(root, "app")
 os.makedirs(app)
 for f in ("dsapi.py", "secret.py"):
-    shutil.copy(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), f), app)  # ExcelAgent
+    shutil.copy(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), f), app)
 open(os.path.join(root, "portable.flag"), "w").write("")
 prog = ("import sys; sys.path.insert(0, sys.argv[1]); import dsapi; c = dsapi.Config(); "
         "print(c.portable, c.dir); "
@@ -106,7 +105,7 @@ prog = ("import sys; sys.path.insert(0, sys.argv[1]); import dsapi; c = dsapi.Co
         "try:\n c.set_api_key('k')\nexcept ValueError as e: print('EXIGE-PW')\n"
         "c.set_api_key('k', password='p'); print(c.key_mode)")
 import subprocess
-env = {k: v for k, v in os.environ.items() if k not in ("DSCHAT_CONFIG_DIR", "EXCELAGENT_CONFIG_DIR")}  # ExcelAgent
+env = {k: v for k, v in os.environ.items() if k not in ("EXCELAGENT_CONFIG_DIR",)}
 env["PYTHONUTF8"] = "1"      # el hijo imprime una ruta con ñ: sin esto escribe cp1252 y el padre no la decodifica como UTF-8
 r = subprocess.run([sys.executable, "-c", prog, app], capture_output=True, text=True, env=env, encoding="utf-8")
 out = r.stdout.splitlines()
@@ -115,7 +114,7 @@ check("portable.flag en el padre de app\\: modo portable con data\\ junto al pro
 check("en portable, guardar sin contraseña se rechaza", "EXIGE-PW" in out, out)
 check("en portable, con contraseña queda en modo password y en data\\", "password" in out and os.path.isfile(os.path.join(root, "data", "config.json")), out)
 check("nada se escribió fuera de la carpeta del programa (control: %APPDATA% no cambió)",
-      not os.path.exists(os.path.join(root, "..", "ExcelAgent")))  # ExcelAgent
+      not os.path.exists(os.path.join(root, "..", "ExcelAgent")))
 
 # ---- config dañada: se aparta, no se pierde
 p = os.path.join(d, "rota")
@@ -124,7 +123,7 @@ open(os.path.join(p, "config.json"), "w").write("{esto no es json")
 c5 = dsapi.Config(p)
 check("config dañada: aviso y copia apartada", c5.load_warning and os.path.exists(os.path.join(p, "config.json.dañado")))
 
-check("defaults nuevos presentes", all(k in dsapi.Config.DEFAULTS for k in ("model_dirs", "llama_server_path", "local_ctx", "approval", "token_budget")))  # ExcelAgent: sin sesiones guardadas
+check("defaults nuevos presentes", all(k in dsapi.Config.DEFAULTS for k in ("model_dirs", "llama_server_path", "local_ctx", "approval", "token_budget")))  # sin sesiones guardadas
 shutil.rmtree(d, ignore_errors=True)
 print("\nFALLAS:", fallas if fallas else "ninguna")
 raise SystemExit(1 if fallas else 0)

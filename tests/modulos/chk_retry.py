@@ -1,5 +1,4 @@
-# Copiado de DeepSeekChat/test_retry.py (29/9/2026) para probar el modulo copiado. Lo adaptado lleva 'ExcelAgent:'.
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))  # ExcelAgent
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
 """Reintento al primer byte de ChatStream, contra un servidor de juguete que se cuelga a propósito (sin red real).
 
 El servidor imita lo medido en deepseek-v4-pro: a veces acepta el pedido y no manda ni la cabecera HTTP.

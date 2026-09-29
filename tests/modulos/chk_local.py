@@ -1,6 +1,5 @@
-# Copiado de DeepSeekChat/test_local.py (29/9/2026) para probar el modulo copiado. Lo adaptado lleva 'ExcelAgent:'.
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))  # ExcelAgent
-"""Modelos locales: escaneo (árbol de juguete) y servidor real (llama-server + un GGUF chico). Uso: python test_local.py"""
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+"""Modelos locales: escaneo (árbol de juguete) y servidor real (llama-server + un GGUF chico). Uso: python chk_local.py"""
 import json
 import os
 import shutil
@@ -24,14 +23,14 @@ def check(nombre, cond, detalle=""):
 
 
 MB = 1024 * 1024
-d = tempfile.mkdtemp(prefix="dschat_lm_")
-# ExcelAgent: limpiar aunque el script muera a mitad de camino (antes quedaban 18,5 GB por corrida en TEMP)
+d = tempfile.mkdtemp(prefix="excelagent_lm_")
+# limpiar aunque el script muera a mitad de camino (antes quedaban 18,5 GB por corrida en TEMP)
 import atexit
 atexit.register(shutil.rmtree, d, ignore_errors=True)
 
 
 def marcar_disperso(f):
-    # ExcelAgent: en NTFS, seek + write NO crea un archivo disperso: reserva el tamaño entero.
+    # en NTFS, seek + write NO crea un archivo disperso: reserva el tamaño entero.
     # Medido: 1 GB aparente = 1024 MB en disco sin la marca, 0 MB con FSCTL_SET_SPARSE.
     import ctypes
     import msvcrt
@@ -43,7 +42,7 @@ def marcar_disperso(f):
 
 
 def en_disco(p):
-    # ExcelAgent: lo que el archivo ocupa de verdad (os.path.getsize da el tamaño aparente)
+    # lo que el archivo ocupa de verdad (os.path.getsize da el tamaño aparente)
     import ctypes
     from ctypes import wintypes
     k = ctypes.windll.kernel32
@@ -225,7 +224,7 @@ else:
           " listo a los " in registro and "cancelado por el usuario mientras cargaba" in registro and "detenido por la app" in registro, registro[-800:])
 
     # El hijo debe morir si el programa muere a la fuerza (Job Object). Se prueba con un padre desechable.
-    # ExcelAgent: localmodels no esta junto a este script sino en la raiz del repo (_sys.path[0], linea 2)
+    # localmodels no esta junto a este script sino en la raiz del repo (_sys.path[0], linea 2)
     padre = (f"import sys; sys.path.insert(0, {_sys.path[0]!r}); import localmodels as lm; "
              f"s = lm.LocalServer({srv_exe!r}, {logd!r}, ctx=2048); s.ensure({MODEL!r}); print(s.proc.pid, flush=True); "
              "import time; time.sleep(600)")

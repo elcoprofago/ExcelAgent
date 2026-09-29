@@ -1,4 +1,3 @@
-# Copiado de DeepSeekChat 1.0.0.7 (commit 793fe17). Los cambios propios de ExcelAgent llevan la marca «ExcelAgent:».
 """Medidor de tokens: velocidad en vivo y consumo acumulado de la jornada (desde que se abrió el programa).
 
 Lógica pura, sin ventana, para poder probarla con un reloj falso. Los tokens EXACTOS llegan con el evento «usage» de

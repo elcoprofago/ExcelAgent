@@ -1,4 +1,3 @@
-# Copiado de DeepSeekChat 1.0.0.7 (commit 793fe17). Los cambios propios de ExcelAgent llevan la marca «ExcelAgent:».
 """Modelos locales: encontrar archivos .gguf y un llama-server, y manejar el servidor (uno a la vez).
 
 Sin dependencias externas. llama-server habla el mismo protocolo que DeepSeek (/v1/chat/completions con herramientas),

@@ -1,6 +1,5 @@
-# Copiado de DeepSeekChat/test_meter.py (29/9/2026) para probar el modulo copiado. Lo adaptado lleva 'ExcelAgent:'.
-import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))  # ExcelAgent
-"""Medidor de tokens con reloj falso. Uso: python test_meter.py"""
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+"""Medidor de tokens con reloj falso. Uso: python chk_meter.py"""
 import sys
 
 import meter

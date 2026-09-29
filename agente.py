@@ -1,4 +1,3 @@
-# Copiado de DeepSeekChat 1.0.0.7 (commit 793fe17), agent.py. Los cambios propios de ExcelAgent llevan la marca «ExcelAgent:».
 """El bucle del agente: el modelo pide herramientas, se ejecutan, el resultado vuelve, hasta que responde con texto.
 
 No sabe nada de ventanas ni de red: recibe una fábrica de streams y una caja de herramientas. Así se prueba entero
@@ -10,7 +9,7 @@ exactamente un mensaje 'tool' por cada llamada, aunque se cancele o falle a la m
 import json
 import re
 
-import herramientas as at  # ExcelAgent: adaptado
+import herramientas as at
 
 OMITTED = "[resultado anterior omitido para ahorrar contexto]"
 # Lo que queda en una llamada vieja en lugar de un texto largo (el archivo entero de un write_file). Solo textos de más
@@ -22,7 +21,7 @@ LONG_ARG_CHARS = 1000
 KEEP_RECENT_STEPS = 6
 PLACEHOLDER_ERROR = ("ERROR: this call was not run: an argument is only the placeholder that ExcelAgent puts in OLD "
                      "history to save context. It is not a real command or text. Write the actual command or text; if you "
-                     "need the exact content of the cells, read them again with read_range.")  # ExcelAgent: adaptado
+                     "need the exact content of the cells, read them again with read_range.")
 # Lo que queda en el historial en lugar de argumentos que no son JSON (una respuesta cortada por el límite de tokens).
 # Si quedara el texto roto, llama-server vuelve a leer el historial en cada pedido, no puede, y contesta 500 para
 # siempre: la sesión queda inservible.
@@ -43,7 +42,7 @@ CTX_MARGIN = 0.92          # la plantilla de chat agrega tokens que no se ven en
 MIN_BUDGET_CHARS = 4000
 # Herramientas que cambian el estado del proyecto: tras una que salió bien, repetir una lectura o volver a correr
 # los tests ya no es repetir en vano (el resultado puede ser otro), así que el contador de repeticiones empieza de cero.
-STATE_CHANGING = at.STATE_CHANGING  # ExcelAgent: las herramientas que escriben en el libro
+STATE_CHANGING = at.STATE_CHANGING  # las herramientas que escriben en el libro
 
 
 def messages_size(msgs):
@@ -283,7 +282,7 @@ class Agent:
             emit("step_end", {"content": content, "reasoning": reasoning, "finish": finish, "calls": calls or []})
             if finish == "length":
                 emit("notice", "La respuesta del modelo se cortó por el límite de tokens (contexto lleno o tope de salida). "
-                               "Si pasa seguido con un modelo local, subí el contexto en Configuración.")  # ExcelAgent: adaptado
+                               "Si pasa seguido con un modelo local, subí el contexto en Configuración.")
             if not calls:
                 return "done"
 
@@ -294,7 +293,7 @@ class Agent:
                     result = "ERROR: cancelled by the user before this call ran"
                     emit("tool_start", c["id"], name, raw)
                 elif self.toolbox is None:
-                    result = "ERROR: tools are not available in this session (no workbook is open)"  # ExcelAgent: adaptado
+                    result = "ERROR: tools are not available in this session (no workbook is open)"
                     emit("tool_start", c["id"], name, raw)
                 else:
                     try:
@@ -304,7 +303,7 @@ class Agent:
                         if finish == "length":
                             result += (". Your reply was cut off by the token limit before the arguments of this call were "
                                        "complete, so it did not run. Resend it shorter: split a big file into several edits, "
-                                       "write the cells in several smaller blocks.")  # ExcelAgent: adaptado
+                                       "write the cells in several smaller blocks.")
                         if not args_ok(raw):
                             c["function"]["arguments"] = BROKEN_ARGS    # en pantalla se sigue viendo `raw`, el texto original
                     emit("tool_start", c["id"], name, args if args is not None else raw)
@@ -322,7 +321,7 @@ class Agent:
                         else:
                             result = self.toolbox.execute(name, args, cancel)
                             if name in STATE_CHANGING and not result.startswith(ERROR_PREFIXES):
-                                # ExcelAgent: la misma escritura identica sigue contando. Caso real (Qwen3.5-9B): una
+                                # la misma escritura identica sigue contando. Caso real (Qwen3.5-9B): una
                                 # escritura que no hacia nada, repetida 50 veces, reiniciaba el contador cada vez.
                                 again = seen[key]
                                 seen.clear()
@@ -338,7 +337,7 @@ class Agent:
                         elif errors[kind] >= SAME_ERROR_WARN:
                             result += ("\n\nNOTE: you got this same error %d times now, with different arguments. "
                                        "Variations of the same call will not fix it. Read the error message above and do what "
-                                       "it says; if it is a restriction of ExcelAgent or of Excel (denied, protected sheet), "  # ExcelAgent: adaptado
+                                       "it says; if it is a restriction of ExcelAgent or of Excel (denied, protected sheet), "
                                        "it will not change: explain it to the user instead of trying again." % errors[kind])
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                 emit("tool_result", c["id"], name, result)
@@ -346,5 +345,5 @@ class Agent:
                 emit("notice", "Se detectó un bucle (el modelo repitió la misma llamada o recibió el mismo error una y "
                                "otra vez); se detuvo el agente.")
                 return "loop"
-        emit("notice", f"Se alcanzó el máximo de {self.max_steps} pasos sin una respuesta final. Escribí «seguí» para que continúe.")  # ExcelAgent: no tiene botón «Continuar»
+        emit("notice", f"Se alcanzó el máximo de {self.max_steps} pasos sin una respuesta final. Escribí «seguí» para que continúe.")  # no tiene botón «Continuar»
         return "max_steps"

@@ -1,5 +1,4 @@
 # Ventanas auxiliares: pedir permiso para un cambio, desbloquear la key y la configuracion.
-# Siguen el modelo de DeepSeekChat (dialogs.py) con los colores de ExcelAgent.
 #
 # Ninguna es modal a la fuerza mientras el asistente trabaja: el agente espera la respuesta en otro hilo y el usuario
 # tiene que poder apretar Detener en la ventana principal.
@@ -8,7 +7,6 @@
 # el hilo de la ventana, clave_cambiada() y reescanear_modelos() -> lista de modelos locales.
 from __future__ import annotations
 
-import json
 import os
 import threading
 import tkinter as tk
@@ -154,59 +152,6 @@ class UnlockDialog:
             self.app.clave_cambiada()
 
 
-# ---------------------------------------------------------------- importar de DeepSeekChat
-
-def config_deepseekchat():
-    'Donde guarda DeepSeekChat su configuracion cuando esta instalado (no portable).'
-    return os.path.join(os.environ.get('APPDATA') or os.path.expanduser('~'), 'DeepSeekChat', 'config.json')
-
-
-def importar_de_deepseekchat(cfg, ruta=None):
-    """Copia de la configuracion de DeepSeekChat la API key y los ajustes de modelos locales. La key nunca pasa por
-    la pantalla: si alla esta cifrada con el usuario de Windows se descifra y se vuelve a cifrar aca; si esta con
-    contraseña, se copia cifrada tal cual (se desbloquea con la misma contraseña). Devuelve un texto con lo hecho;
-    lanza ValueError si no hay nada que importar."""
-    ruta = ruta or config_deepseekchat()
-    try:
-        with open(ruta, 'r', encoding='utf-8') as f:
-            otra = json.load(f)
-    except FileNotFoundError:
-        raise ValueError(f'No encontre la configuracion de DeepSeekChat en {ruta}.')
-    except (OSError, ValueError) as e:
-        raise ValueError(f'No pude leer {ruta}: {e}')
-    if not isinstance(otra, dict):
-        raise ValueError(f'{ruta} no tiene el formato esperado.')
-    hecho = []
-    if otra.get('api_key_pw'):
-        cfg['api_key_enc'] = ''
-        cfg['api_key_pw'] = otra['api_key_pw']
-        cfg.set_session_key('')
-        hecho.append('la API key (cifrada con contraseña: te la va a pedir para desbloquearla)')
-    elif otra.get('api_key_enc'):
-        try:
-            key = dsapi.unprotect(otra['api_key_enc'])
-        except (OSError, ValueError) as e:
-            raise ValueError(f'La key de DeepSeekChat no se pudo descifrar con este usuario de Windows ({e}).')
-        cfg.set_api_key(key)
-        del key
-        hecho.append('la API key (cifrada con tu usuario de Windows)')
-    if otra.get('llama_server_path'):
-        cfg['llama_server_path'] = str(otra['llama_server_path'])
-        hecho.append('la ruta de llama-server')
-    dirs = [d for d in (otra.get('model_dirs') or []) if isinstance(d, str) and d]
-    nuevas = [d for d in dirs if d not in cfg['model_dirs']]
-    if nuevas:
-        cfg['model_dirs'] = list(cfg['model_dirs']) + nuevas
-        hecho.append('las carpetas de modelos (' + ', '.join(nuevas) + ')')
-    if isinstance(otra.get('local_ctx'), int) and otra['local_ctx'] >= 2048:
-        cfg['local_ctx'] = otra['local_ctx']
-        hecho.append(f"el contexto local ({otra['local_ctx']})")
-    if not hecho:
-        raise ValueError('DeepSeekChat no tiene ni key ni modelos locales configurados.')
-    cfg.save()
-    return 'Importe ' + '; '.join(hecho) + '.'
-
-
 # ---------------------------------------------------------------- configuracion
 
 class SettingsDialog:
@@ -293,7 +238,6 @@ class SettingsDialog:
 
         bf = _marco(f)
         bf.grid(row=11, column=0, columnspan=3, sticky='we', pady=(10, 0))
-        _boton(bf, 'Importar desde DeepSeekChat', self.importar).pack(side='left')
         self.btn_probar = _boton(bf, 'Probar y guardar', self.probar_y_guardar, principal=True)
         self.btn_probar.pack(side='right')
         _boton(bf, 'Borrar key', self.borrar_key).pack(side='right', padx=6)
@@ -384,23 +328,6 @@ class SettingsDialog:
             self._estado_key()
             self._msg('Key borrada.')
             self.app.clave_cambiada()
-
-    def importar(self):
-        cfg = self.app.cfg
-        if cfg.has_key() and not messagebox.askyesno(
-                TITULO, 'Ya hay una key guardada en ExcelAgent. Reemplazarla por la de DeepSeekChat?', parent=self.win):
-            return
-        try:
-            texto = importar_de_deepseekchat(cfg)
-        except (ValueError, OSError) as e:
-            self._msg(str(e), error=True)
-            return
-        self._cargar_local()
-        self._estado_key()
-        self._msg(texto)
-        self.app.clave_cambiada()
-        if cfg.needs_unlock:
-            UnlockDialog(self.app)
 
     # ------------------------------------------------------------ modelos locales
 

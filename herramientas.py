@@ -1,5 +1,5 @@
-# Las herramientas que el modelo puede pedir sobre el libro abierto, con el mismo protocolo que agent_tools.py de
-# DeepSeekChat: SPECS (formato OpenAI), parse_args, ToolError y ToolBox.execute(nombre, args, cancel) -> texto.
+# Las herramientas que el modelo puede pedir sobre el libro abierto: SPECS (formato OpenAI), parse_args, ToolError y
+# ToolBox.execute(nombre, args, cancel) -> texto.
 #
 # Todo corre en el hilo de trabajo, el mismo que abrio la conexion COM: cruzar objetos COM entre hilos los invalida.
 # Las descripciones van en ingles (los modelos las siguen mejor); los mensajes al usuario los escribe el modelo.
