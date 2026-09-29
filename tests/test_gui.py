@@ -5,8 +5,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tempfile
 
-# La configuracion real (%APPDATA%\ExcelAgent) no se toca: cada corrida usa una carpeta propia.
+# La configuracion real (%APPDATA%\ExcelAgent) y el registro real (logs\) no se tocan: cada corrida usa una
+# carpeta propia. Regresion del 29/09/2026: el registro del usuario quedaba mezclado con las marcas de las pruebas.
 os.environ['EXCELAGENT_CONFIG_DIR'] = tempfile.mkdtemp(prefix='excelagent_cfg_')
+os.environ['EXCELAGENT_LOG_DIR'] = os.path.join(os.environ['EXCELAGENT_CONFIG_DIR'], 'logs')
 
 import gui
 
@@ -246,6 +248,10 @@ def test_pedido_completo_con_modelo_falso():
         tokens = v.tokens_var.get()
         assert '1.230' in tokens and 'cache 1.000' in tokens
         assert v.agente.totals['in'] == 1200
+        # La respuesta va al registro en una sola linea, no una por pieza del streaming.
+        with open(v.archivo_log, encoding='utf-8') as f:
+            lineas = [l for l in f if '[asistente]' in l]
+        assert len(lineas) == 1 and lineas[0].rstrip().endswith('[asistente] Usa =SUMA(A1:A3).')
     finally:
         v.raiz.destroy()
 

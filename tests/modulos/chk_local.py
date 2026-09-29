@@ -240,26 +240,36 @@ else:
         subprocess.run(["taskkill", "/F", "/PID", str(hijo)], capture_output=True)
 
 # --- build con CUDA: el modelo va a la GPU sin -ngl, y sin GPU visible cae a la CPU sin romperse
-CUDA_EXE = r"E:\llama-server\llama-server.exe"
-if not os.path.isfile(MODEL) or not os.path.isfile(CUDA_EXE):
-    print("(se omite la parte CUDA: falta el modelo o E:\\llama-server)")
+# El llama-server del programa (..\bin, build CUDA) y, si no esta, el de E:\llama-server.
+CUDA_EXE = next((p for p in (os.path.join(os.path.dirname(_sys.path[0]), "bin", "llama-server.exe"),
+                             r"E:\llama-server\llama-server.exe") if os.path.isfile(p)), "")
+if not os.path.isfile(MODEL) or not CUDA_EXE:
+    print("(se omite la parte CUDA: falta el modelo o un llama-server con CUDA en ..\\bin o E:\\llama-server)")
 else:
-    def vram_mb():
-        """VRAM total usada según nvidia-smi, o None. Por proceso no sirve: en Windows (WDDM) devuelve [N/A],
+    def vram_mb(campo="memory.used"):
+        """VRAM segun nvidia-smi, o None. Por proceso no sirve: en Windows (WDDM) devuelve [N/A],
         y el log de este build no dice cuántas capas subió. Se compara antes y después de cargar."""
         try:
-            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            out = subprocess.run(["nvidia-smi", "--query-gpu=" + campo, "--format=csv,noheader,nounits"],
                                  capture_output=True, text=True, timeout=20)
             return int(out.stdout.split()[0]) if out.returncode == 0 else None
         except (OSError, ValueError, IndexError):
             return None
     logc = os.path.join(d, "logs_cuda")
     s = lm.LocalServer(CUDA_EXE, logc, ctx=4096)
+    # Si otros programas ocupan la GPU (medido el 29/09/2026: dos modelos cargados, 7216 de 8151 MB), el modelo
+    # de prueba no entra y llama-server lo pone en la CPU. Eso no es una falla del programa: se omite y se dice.
+    libre = vram_mb("memory.free")
+    hace_falta = os.path.getsize(MODEL) // (1024 * 1024) + 1024
     antes = vram_mb()
     base = s.ensure(MODEL, reasoning="off")
     despues = vram_mb()
-    check("CUDA: nvidia-smi responde (si no, las pruebas de VRAM no valen)", antes is not None and despues is not None)
-    check("CUDA: cargar el modelo sube la VRAM (está en la GPU)", s.alive() and (despues or 0) - (antes or 0) > 200, (antes, despues))
+    check("CUDA: nvidia-smi responde (si no, las pruebas de VRAM no valen)", antes is not None and despues is not None and libre is not None)
+    if libre is not None and libre < hace_falta:
+        print(f"(se omite 'cargar el modelo sube la VRAM': la GPU tiene {libre} MB libres y hacen falta unos {hace_falta};"
+              " la ocupan otros programas)")
+    else:
+        check("CUDA: cargar el modelo sube la VRAM (está en la GPU)", s.alive() and (despues or 0) - (antes or 0) > 200, (antes, libre, despues))
     check("CUDA: los argumentos no llevan -ngl", "-ngl" not in s.args and "--reasoning" in s.args, s.args)
     body = json.dumps({"model": "x", "messages": [{"role": "user", "content": "Decí solo la palabra: hola"}], "max_tokens": 16}).encode()
     r = json.loads(urllib.request.urlopen(urllib.request.Request(base + "/chat/completions", data=body, headers={"Content-Type": "application/json"}), timeout=120).read())

@@ -41,7 +41,8 @@ ALTO_ENTRADA = 3
 ALTO_ENTRADA_MAX = 10
 ESPERA_MAXIMA = 25
 REAVISO = 30
-RUTA_LOGS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+# EXCELAGENT_LOG_DIR es para las pruebas: antes escribian en este mismo registro y se mezclaban con el uso real.
+RUTA_LOGS = os.environ.get('EXCELAGENT_LOG_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
 MARCA = '------------------------------------------------------------'
 SIN_EFFORT = '(por defecto)'
 MAX_LOG_HERRAMIENTA = 300
@@ -55,8 +56,8 @@ AYUDA = """Soy tu asesor de Excel. Pedime las cosas como te salgan, por ejemplo:
 - "armame un grafico de las ventas por mes"
 - "como hago para que la primera fila quede fija?"
 
-Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas un texto o una
-imagen para volcar en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
+Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas un texto, una
+imagen o los contactos exportados del telefono (.vcf) para volcar en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
 
 Arriba elegis el modelo: los de DeepSeek necesitan la API key (Configuracion); los [local] corren en esta PC, sin internet,
 pero son mas lentos. El esfuerzo es cuanto piensa antes de contestar: mas esfuerzo, mejores respuestas y mas tokens.
@@ -93,6 +94,7 @@ class Ventana:
         self.cancel_ev = None
         self._dialogo = None
         self._paso_con_texto = False
+        self._texto_paso = []       # la respuesta en curso: va al registro entera, no pieza por pieza
         self.ultimo_aviso = 0.0
         self.ultimo_evento = time.time()
         self.archivo_log = None
@@ -428,8 +430,10 @@ class Ventana:
         self.peticiones.put(('abrir', self.ruta))
 
     def _adjuntar(self):
-        tipos = [('Textos', '*.txt *.csv *.tsv *.log *.md'), ('Imagenes', '*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'), ('Todos los archivos', '*.*')]
-        rutas = filedialog.askopenfilenames(title='Adjuntar textos o imagenes', filetypes=tipos)
+        tipos = [('Textos, contactos o imagenes', '*.txt *.csv *.tsv *.log *.md *.vcf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'),
+                 ('Contactos (agenda del telefono)', '*.vcf *.csv'), ('Textos', '*.txt *.csv *.tsv *.log *.md'),
+                 ('Imagenes', '*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'), ('Todos los archivos', '*.*')]
+        rutas = filedialog.askopenfilenames(title='Adjuntar textos, contactos o imagenes', filetypes=tipos)
         if not rutas:
             self.bus.log('No se adjunto ningun archivo.', 'warn')
             return
@@ -593,6 +597,7 @@ class Ventana:
         if kind == 'step_begin':
             self.medidor.step_begin()
             self._paso_con_texto = False
+            self._texto_paso = []
             self.estado_var.set('Pensando...')
         elif kind == 'reasoning':
             self.medidor.piece(a[0])
@@ -608,6 +613,7 @@ class Ventana:
             p = a[0]
             if self._paso_con_texto:
                 self._escribir_en_vivo(chr(10))
+            self._anotar_respuesta()
             if p.get('finish') == 'length':
                 self.bus.chat('La respuesta se corto por el limite de tokens (se ajusta en Configuracion, Avanzado).', 'aviso')
         elif kind == 'tool_start':
@@ -633,10 +639,18 @@ class Ventana:
         self.chat.insert('end', texto, 'agente')
         self.chat.see('end')
         self.chat.configure(state='disabled')
-        self._anotar('[asistente] ' + texto.strip()) if texto.strip() else None
+        self._texto_paso.append(texto)
+
+    def _anotar_respuesta(self):
+        # Antes se anotaba cada pieza del streaming como una linea '[asistente]' aparte (una por palabra).
+        texto = ''.join(self._texto_paso).strip()
+        self._texto_paso = []
+        if texto:
+            self._anotar('[asistente] ' + texto)
 
     def _pedido_terminado(self, r):
         self.medidor.step_end()          # un paso cortado no se pierde del acumulado
+        self._anotar_respuesta()         # ni su texto en el registro
         self._cerrar_dialogo()
         self.en_pedido = False
         self.cancel_ev = None

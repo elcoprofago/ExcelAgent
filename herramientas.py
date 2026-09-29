@@ -720,7 +720,8 @@ class ToolBox:
         a = self._attachment(index)
         text = a['texto']
         cut = f'\n[truncated: {len(text)} characters in total]' if len(text) > MAX_ATTACHMENT_CHARS else ''
-        return (f"{a['nombre']} ({'image, text read by OCR' if a['clase'] == 'imagen' else 'text file'}); "
+        kind = {'imagen': 'image, text read by OCR', 'contactos': 'contact list, one row per contact'}.get(a['clase'], 'text file')
+        return (f"{a['nombre']} ({kind}); "
                 f"detected {len(a['filas'])} rows x {a['columnas']} columns.\n{text[:MAX_ATTACHMENT_CHARS]}{cut}")
 
     def tool_paste_attachment(self, start_cell='A1', index=None, sheet=None):
@@ -735,7 +736,15 @@ class ToolBox:
         if n and not self._ask('edit', f'Pisar {n} celda(s) con datos en {addr(target)}',
                                f"Con el contenido de {a['nombre']}. Hoy tienen, entre otras: " + ', '.join(sample)):
             return self._denied(f'overwriting {n} non-empty cell(s) in {addr(target)}')
-        data = tuple(tuple([keep_text(excel.valor_celda(v)) for v in f] + [''] * (width - len(f))) for f in a['filas'])
+        # Telefonos como texto: si no, Excel les saca el '+' y los ceros, los muestra como 5,49116E+12, o toma
+        # '+54 9 11 ...' por formula. Por el encabezado de la columna o por la forma del valor.
+        import contactos
+        tel = [contactos.es_columna_telefono(h) for h in a['filas'][0]] + [False] * width
+        def cell(i, v):
+            if tel[i] or contactos.parece_telefono(v):
+                return "'" + v if str(v).strip() else v
+            return keep_text(excel.valor_celda(v))
+        data = tuple(tuple([cell(i, v) for i, v in enumerate(f)] + [''] * (width - len(f))) for f in a['filas'])
         target.Value2 = data
         return f"Pasted {a['nombre']} into '{h.Name}'!{addr(target)}.\n" + self._preview(target)
 
@@ -837,9 +846,11 @@ SPECS = [
         {'path': {'type': 'string', 'description': 'Default: next to the workbook'}, 'sheet': _SHEET}, []),
     _fn('excel_window', 'Show the Excel window to the user, or minimize it.',
         {'action': {'type': 'string', 'enum': ['show', 'minimize']}}, []),
-    _fn('read_attachment', "Read a file the user attached with the '+' button (text file, or image read by OCR).",
+    _fn('read_attachment', "Read a file the user attached with the '+' button (text or CSV file, contacts exported as "
+        'vCard .vcf or CSV, or an image such as a screenshot, read by OCR).',
         {'index': {'type': 'integer', 'description': 'Attachment number; default the last one'}}, []),
-    _fn('paste_attachment', 'Paste the rows of an attachment into the sheet (split by tab, ; or ,).',
+    _fn('paste_attachment', 'Paste the rows of an attachment into the sheet (split by tab, ; or ,). Contacts come as '
+        'Nombre, Telefono, Otros telefonos, Correo; phone numbers are kept as text.',
         {'start_cell': {'type': 'string'}, 'index': {'type': 'integer'}, 'sheet': _SHEET}, []),
     _fn('outlook_contacts', "Bring the contacts from the user's Outlook into the active sheet from A1 (if the "
         'Contacts folder is empty, collects senders from Inbox and Sent). Can take minutes.',

@@ -107,19 +107,14 @@ class Sesion:
             if viva is not None:
                 self.app = viva
                 origen = 'una instancia de Excel ya abierta'
-            else:
-                self.app = win32.DispatchEx('Excel.Application')
-                self.propia = True
-                origen = 'una instancia nueva de Excel'
-            try:
-                self.app.DisplayAlerts = False
-                self.app.Visible = bool(visible)
-            except Exception as exc:
-                self.bus.log('La instancia adoptada no respondia: armo una nueva. ' + str(exc), 'warn')
-                self.app = win32.DispatchEx('Excel.Application')
-                self.propia = True
-                self.app.DisplayAlerts = False
-                self.app.Visible = bool(visible)
+                try:
+                    self.app.DisplayAlerts = False
+                    self.app.Visible = bool(visible)
+                except Exception as exc:
+                    self.bus.log('La instancia adoptada no respondia: armo una nueva. ' + str(exc), 'warn')
+                    self.app = None
+            if self.app is None:
+                self._instancia_nueva(win32, visible)
                 origen = 'una instancia nueva de Excel'
         else:
             origen = 'la conexion ya abierta'
@@ -129,16 +124,21 @@ class Sesion:
     def _instancia_que_responde(self, win32):
         # Nunca se adhiere a un Excel trabado. La sonda corre en un hilo aparte,
         # pero el objeto se toma en este hilo: cruzar objetos COM entre hilos los invalida.
+        # Solo se adopta un Excel con ventana: uno sin ventana es de otro programa que lo automatiza
+        # (o de las pruebas) y puede cerrarse en cualquier momento. Medido el 29/09/2026: adoptar el
+        # Excel oculto de las pruebas hizo fallar 'Excel no pudo abrir el archivo'. La sonda solo lee.
         def sonda():
             obj = win32.GetActiveObject('Excel.Application')
-            obj.DisplayAlerts = False
-            return int(obj.Workbooks.Count)
+            return bool(obj.Visible), int(obj.Workbooks.Count)
         try:
-            con_limite(sonda, 6)
+            visible, _ = con_limite(sonda, 6)
         except ExcelError as exc:
             self.bus.log('No pude usar el Excel abierto: ' + str(exc), 'warn')
             return None, 'El Excel abierto no se puede usar: trabajo con una instancia nueva. Destrabalo y apreta Reconectar.'
         except Exception:
+            return None, str()
+        if not visible:
+            self.bus.log('Hay un Excel sin ventana (de otro programa): no lo toco y trabajo con una instancia nueva.', 'info')
             return None, str()
         try:
             return win32.GetActiveObject('Excel.Application'), str()
@@ -163,6 +163,13 @@ class Sesion:
             self.abierto_por_nosotros = True
         if self.wb is None:
             self.wb = self._buscar_abierto(ruta)
+        if self.wb is None and not self.propia:
+            # Open en un Excel ajeno puede no fallar y aun asi no dejar el libro (por ejemplo, si esa
+            # instancia se estaba cerrando): se reintenta una vez en una instancia propia.
+            self.bus.log('El Excel en uso no dejo el libro abierto. Pruebo con una instancia nueva.', 'warn')
+            import win32com.client as win32
+            self._instancia_nueva(win32, visible)
+            self.wb = self._abrir_libro(ruta, visible) or self._buscar_abierto(ruta)
         if self.wb is None:
             raise ExcelError('Excel no pudo abrir el archivo: ' + ruta)
         self.ruta = ruta
@@ -190,12 +197,15 @@ class Sesion:
         except Exception as exc:
             self.bus.log('El Excel en uso no pudo abrir el libro: ' + str(exc)[:70] + '. Pruebo con una instancia nueva.', 'warn')
             import win32com.client as win32
-            self.app = win32.DispatchEx('Excel.Application')
-            self.app.DisplayAlerts = False
-            self.app.Visible = bool(visible)
-            self.propia = True
+            self._instancia_nueva(win32, visible)
             self.bus.log('Conexion lista con una instancia nueva de Excel', 'ok')
             return self.app.Workbooks.Open(ruta)
+
+    def _instancia_nueva(self, win32, visible):
+        self.app = win32.DispatchEx('Excel.Application')
+        self.propia = True
+        self.app.DisplayAlerts = False
+        self.app.Visible = bool(visible)
 
 
     def minimizar(self):
@@ -657,6 +667,18 @@ def procesar_adjunto(ruta):
     clase = 'imagen' if ext in imagenes else 'texto'
     texto = ocr_imagen(ruta) if clase == 'imagen' else leer_texto(ruta)
     filas = partir_filas(texto)
+    if ext == '.vcf':
+        # Agenda del telefono exportada (es la de WhatsApp): una fila por contacto.
+        import contactos
+        filas, clase = contactos.filas_de_vcard(texto), 'contactos'
+        texto = NL.join(chr(9).join(f) for f in filas)
+    elif ext in ('.csv', '.tsv'):
+        import contactos
+        filas = contactos.filas_de_csv(texto)
+        reducidas = contactos.reducir_contactos(filas)
+        if reducidas:
+            filas, clase = reducidas, 'contactos'
+            texto = NL.join(chr(9).join(f) for f in filas)
     columnas = 0
     for f in filas:
         if len(f) > columnas:

@@ -51,7 +51,7 @@ La configuracion vive en `%APPDATA%\ExcelAgent\config.json` (o en la carpeta que
 ## Interfaz
 
 - **Abrir Excel**: elige el libro. Si ya estaba abierto en tu Excel, se trabaja sobre esa misma ventana.
-- **+**: adjunta un archivo (texto, csv, imagen) para que el asistente lo lea o lo vuelque en la hoja.
+- **+**: adjunta un archivo (texto, csv, contactos .vcf, imagen) para que el asistente lo lea o lo vuelque en la hoja.
 - **Modelo** y **Esfuerzo**: selector del modelo (DeepSeek o locales encontrados) y del nivel de razonamiento.
 - **Medidor**: que esta haciendo (pensando, razonando, trabajando en Excel, esperando permiso), una barra con los
   tokens del dia contra el presupuesto, el detalle de entrada (con cache), salida (con razonamiento) y la
@@ -75,7 +75,7 @@ Leer y buscar; escribir valores y formulas; rellenar formulas; formatos de numer
 fechas), fuentes y colores; autoajustar columnas; ordenar, filtrar, tablas, quitar duplicados, reemplazar,
 borrar; insertar y eliminar filas o columnas; hojas; graficos; formato condicional; listas desplegables;
 inmovilizar paneles; guardar, guardar copia, exportar a CSV; manejar la ventana de Excel; leer y pegar adjuntos;
-traer contactos de Outlook.
+traer contactos de Outlook o de la agenda del telefono.
 
 Las formulas se escriben en ingles y Excel las muestra en castellano. Los formatos de numero tambien viajan en
 ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moneda" se veia `$ 1234,5000`.
@@ -89,6 +89,17 @@ ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moned
   enviados: por defecto los 1200 correos mas recientes de cada carpeta (unos 2 minutos). Pidiendo "todos",
   recorre el buzon completo; medido: unos 16 minutos con 20.000 correos.
 
+## Contactos del telefono (y de WhatsApp)
+
+- WhatsApp no tiene agenda propia: usa la del telefono. ExcelAgent no lee WhatsApp Web (automatizarlo va contra las
+  condiciones de uso de WhatsApp y arriesga la cuenta); la via es exportar la agenda y adjuntarla con **+**.
+- Formatos: vCard (`.vcf`, lo que exporta la app Contactos de Android o icloud.com) y CSV de contactos (Google
+  Contactos, Outlook). Se reducen a Nombre, Telefono, Otros telefonos y Correo (`contactos.py`).
+- Los telefonos se escriben como texto: sin eso Excel les sacaba el `+`, los mostraba como `5,49114E+12` o tomaba
+  `+54 9 11 ...` por una formula. Vale para toda columna cuyo encabezado diga telefono, celular, movil, phone o
+  WhatsApp, y para todo valor con forma de telefono.
+- Para pocos contactos alcanza una captura de la lista adjuntada con **+** (OCR: conviene revisar los numeros).
+
 ## Lectura de texto en imagenes
 
 - Motor: Tesseract 5.5.3 en `..\tesseract` (fuera del repo), con los idiomas eng y spa. Tambien se busca en
@@ -100,6 +111,11 @@ ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moned
 Antes de conectarse, el asistente consulta si hay un Excel abierto y le da seis segundos para contestar. Si no
 contesta (un cuadro de dialogo abierto, una celda en edicion), no se le cuelga encima: avisa en el registro y
 trabaja con una instancia nueva. Para volver a la original: destrabala en Excel y apreta **Reconectar**.
+
+Solo se usa un Excel abierto que tenga ventana. Uno sin ventana es de otro programa que automatiza Excel (o de
+las pruebas): no se toca y se trabaja con una instancia propia. Antes se adoptaba y podia fallar con "Excel no
+pudo abrir el archivo" (medido el 29/09/2026). Si el libro igual no queda abierto, se reintenta una vez en una
+instancia propia.
 
 ## Modelos locales
 
@@ -118,7 +134,9 @@ En esta PC, `..\bin` tiene llama-server b9775 con CUDA (678 MB). Pruebas reales 
 
 ## Archivo .log
 
-Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`).
+Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`). La variable `EXCELAGENT_LOG_DIR` lo manda a
+otra carpeta: las pruebas la usan para no mezclarse con el registro real. La respuesta del asistente va en una sola
+linea (antes, una linea por cada pieza del texto).
 
 ## Pruebas
 
@@ -130,6 +148,10 @@ Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`).
   ocupan disco) y los borra aunque la prueba muera a mitad de camino.
 - No usan la API key real ni gastan tokens: el modelo se reemplaza por un guion.
 - La prueba de graficos fallo una vez de cada varias corridas sin causa encontrada; repetida, pasa.
+- La de modelos locales en la GPU se omite (y lo dice) si otros programas ocupan la VRAM y el modelo de prueba no
+  entra.
+- Mientras corren, conviene no usar **Abrir Excel** en un ExcelAgent de una version anterior al 29/09/2026: esa
+  version adoptaba el Excel oculto de las pruebas.
 
 ## Estructura
 
@@ -143,6 +165,7 @@ Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`).
     dsapi.py          API de DeepSeek y configuracion
     localmodels.py    Modelos .gguf con llama-server
     meter.py          Medidor de tokens
+    contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
     tests\            Pruebas

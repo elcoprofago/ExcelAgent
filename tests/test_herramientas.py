@@ -327,6 +327,35 @@ def test_adjunto_leer_y_pegar(libro, sesion, tmp_path):
         sesion.adjuntos = []
 
 
+def test_contactos_del_telefono_se_pegan_con_los_numeros_intactos(libro, sesion, tmp_path):
+    # El pedido tipico 'sacame los contactos de WhatsApp': llegan como vCard exportado de la agenda del telefono.
+    # Antes '+5491144443333' quedaba como el numero 5491144443333 (sin '+', a la vista 5,49114E+12) y
+    # '+54 9 11 5555-1234' Excel lo tomaba por formula.
+    tb, _, _ = libro()
+    archivo = tmp_path / 'contactos.vcf'
+    archivo.write_text('BEGIN:VCARD\r\nFN:Maria\r\nTEL;CELL:+54 9 11 5555-1234\r\nTEL:0351 422-1111\r\nEND:VCARD\r\n'
+                       'BEGIN:VCARD\r\nFN:Juan\r\nTEL:+5491144443333\r\nEND:VCARD\r\n', encoding='utf-8')
+    otro = tmp_path / 'ventas.csv'
+    otro.write_text('Cliente;Telefono;Importe\nAna;1144443333;1500\n', encoding='utf-8')
+    try:
+        sesion.adjuntos = [excel.procesar_adjunto(str(archivo))]
+        assert 'contact list' in tb.execute('read_attachment', {})
+        tb.execute('paste_attachment', {'start_cell': 'A1', 'sheet': 'Control'})
+        h = sesion.wb.Worksheets('Control')
+        assert [h.Range(c).Value2 for c in ('A1', 'B1', 'C1')] == ['Nombre', 'Telefono', 'Otros telefonos']
+        assert h.Range('B2').Value2 == '+54 9 11 5555-1234'
+        assert h.Range('C2').Value2 == '0351 422-1111'
+        assert h.Range('B3').Value2 == '+5491144443333'
+        # Columna 'Telefono' sin forma de telefono: igual va como texto. Control: el importe sigue siendo numero.
+        sesion.adjuntos = [excel.procesar_adjunto(str(otro))]
+        tb.execute('paste_attachment', {'start_cell': 'A1', 'sheet': 'Datos'})
+        d = sesion.wb.Worksheets('Datos')
+        assert d.Range('B2').Value2 == '1144443333'
+        assert d.Range('C2').Value2 == 1500
+    finally:
+        sesion.adjuntos = []
+
+
 def test_outlook_contacts_pasa_el_pedido_de_todo_el_buzon(libro, monkeypatch):
     # Regresion: el aviso de 'se miraron los 1200 mas recientes' ofrecia revisar el buzon entero, pero la herramienta
     # no tenia como pedirlo. Outlook falso con la carpeta de Contactos vacia: tiene que caer en los correos.
