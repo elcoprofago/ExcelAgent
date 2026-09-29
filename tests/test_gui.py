@@ -200,7 +200,7 @@ def test_boton_visible_con_la_ventana_comprimida():
                 t = w.cget('text') or str(w.cget('textvariable'))
             except Exception:
                 continue
-            if t in ('Nueva charla', 'Configuracion', '⟳', str(v.saldo_var)):
+            if t in ('Nueva charla', 'Configuracion', '⟳', 'Actualizar', str(v.saldo_var)):
                 x = w.winfo_rootx() - v.raiz.winfo_rootx()
                 assert w.winfo_ismapped() and x >= 0 and x + w.winfo_width() <= ancho, t
                 assert w.winfo_width() >= w.winfo_reqwidth(), t      # entero, no recortado
@@ -358,5 +358,60 @@ def test_saldo_muestra_la_hora_y_lo_gastado_en_la_sesion(monkeypatch):
         v._refrescar_saldo()
         assert esperar(v, lambda: v.saldo_var.get() != 'Saldo: ...')
         assert 'sesion: -US$ 0.02' in v.saldo_var.get()
+    finally:
+        v.raiz.destroy()
+
+
+def test_titulo_con_la_version():
+    v = gui.Ventana()
+    try:
+        assert v.raiz.title() == 'ExcelAgent ' + gui.version.VERSION + ' - asesor de Excel'
+    finally:
+        v.raiz.destroy()
+
+
+def test_boton_actualizar(monkeypatch):
+    # Sin red: GitHub, la instalacion y los cuadros de dialogo son falsos.
+    dialogos = []
+    monkeypatch.setattr(gui.messagebox, 'showinfo', lambda t, m: dialogos.append(('info', m)))
+    monkeypatch.setattr(gui.messagebox, 'showerror', lambda t, m: dialogos.append(('error', m)))
+    respuestas = iter([True, False])        # si a instalar, no a reiniciar ahora
+    monkeypatch.setattr(gui.messagebox, 'askyesno', lambda t, m: dialogos.append(('pregunta', m)) or next(respuestas))
+    instaladas = []
+    monkeypatch.setattr(gui.actualizar, 'actualizar',
+                        lambda rel, avance=None: (avance(50, 100), instaladas.append(rel['version']), 'C:/respaldo')[-1])
+    monkeypatch.setattr(gui.actualizar, 'relanzar', lambda: instaladas.append('relanzo'))
+    rel = {'tag': 'v' + gui.version.VERSION, 'version': gui.version.VERSION, 'nombre': 'misma', 'notas': ''}
+    monkeypatch.setattr(gui.actualizar, 'ultima_release', lambda: dict(rel))
+    v = gui.Ventana()
+    try:
+        # 1) ya esta la ultima
+        v._actualizar()
+        assert esperar(v, lambda: not v.actualizando)
+        assert dialogos == [('info', 'Ya tenes la ultima version (' + gui.version.VERSION + ').')]
+        assert v.boton_actualizar.cget('state') == 'normal'
+        # 2) hay una nueva: la ofrece con sus notas, la instala y no reinicia porque se dijo que no
+        dialogos.clear()
+        rel.update(tag='v99.0.0', version='99.0.0', nombre='Version 99', notas='Cosas nuevas')
+        v._actualizar()
+        assert v.boton_actualizar.cget('state') == 'disabled'
+        assert esperar(v, lambda: not v.actualizando and len(dialogos) == 2)
+        assert 'Cosas nuevas' in dialogos[0][1] and 'Version 99' in dialogos[0][1]
+        assert 'instalada la version 99.0.0' in dialogos[1][1]
+        assert instaladas == ['99.0.0']
+        assert int(v.pct.get()) == 100 and 'C:/respaldo' in v.log.get('1.0', 'end')
+        # 3) un error se muestra y el boton vuelve a andar
+        dialogos.clear()
+        monkeypatch.setattr(gui.actualizar, 'ultima_release',
+                            lambda: (_ for _ in ()).throw(gui.actualizar.ErrorActualizacion('sin internet')))
+        v._actualizar()
+        assert esperar(v, lambda: not v.actualizando)
+        assert dialogos == [('error', 'sin internet')] and v.boton_actualizar.cget('state') == 'normal'
+        # 4) con un pedido en curso no arranca
+        dialogos.clear()
+        v.en_pedido = True
+        v._actualizar()
+        assert not v.actualizando and dialogos[0][0] == 'info' and 'trabajo en curso' in dialogos[0][1]
+        v.en_pedido = False
     finally:
         v.raiz.destroy()

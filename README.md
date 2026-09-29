@@ -157,6 +157,34 @@ Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`). La varia
 otra carpeta: las pruebas la usan para no mezclarse con el registro real. La respuesta del asistente va en una sola
 linea (antes, una linea por cada pieza del texto).
 
+## Actualizar
+
+La version va en el titulo de la ventana (`ExcelAgent 1.0.0 - asesor de Excel`) y sale de `version.py`.
+
+- Al abrir, el programa consulta la ultima release publicada en GitHub (elcoprofago/ExcelAgent). Si hay una mas
+  nueva, lo dice en el registro. Sin internet no molesta.
+- El boton **Actualizar** la busca, muestra sus notas y pregunta antes de instalar. Despues:
+  1. baja el zip de la release y comprueba que sea ExcelAgent y que la version de adentro coincida con la
+     etiqueta;
+  2. guarda una copia entera de la version instalada en `_versiones_anteriores\<version>_<fecha>` y la verifica;
+  3. copia los archivos nuevos. Si `requirements.txt` cambio, instala las bibliotecas en `..\.venv`.
+- Si algo falla a mitad de camino, vuelve a dejar la version anterior tal cual estaba y lo dice.
+- No toca `logs\`, la configuracion (en %APPDATA%), `..\.venv` ni `..\tesseract`.
+- No borra archivos que la version nueva ya no traiga.
+- Si la carpeta es un clon de git con cambios sin commitear, no la pisa: hay que usar `git pull`.
+- Al terminar ofrece reiniciar el programa.
+- Para volver a una version anterior a mano, copiar el contenido de su carpeta en `_versiones_anteriores` sobre la
+  del programa.
+
+Publicar una version nueva (desde la PC de desarrollo):
+
+1. subir `VERSION` en `version.py` y commitear en `main`;
+2. correr `.\publicar.ps1 -Notas "que trae"`.
+
+El script se niega si hay cambios sin commitear, si la etiqueta ya existe o si la version no es mayor que la
+ultima publicada. Despues sube `main`, crea la etiqueta `v<VERSION>` y la release, y verifica que GitHub la
+devuelva como la ultima.
+
 ## Pruebas
 
     ..\.venv\Scripts\python.exe -m pytest tests -q
@@ -188,5 +216,8 @@ linea (antes, una linea por cada pieza del texto).
     numeros.py        Numeros y fechas escritos como texto -> valores de Excel
     contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
+    version.py        Numero de version (titulo de la ventana y etiqueta de la release)
+    actualizar.py     Boton Actualizar: baja la ultima release de GitHub, respalda e instala
+    publicar.ps1      Publica una version como release de GitHub
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
     tests\            Pruebas

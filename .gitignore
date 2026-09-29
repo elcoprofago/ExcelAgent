@@ -13,3 +13,6 @@ logs/
 
 # Respaldos que genera el asistente
 _excelagent_respaldos/
+
+# Version anterior que guarda el boton Actualizar antes de instalar una nueva
+_versiones_anteriores/

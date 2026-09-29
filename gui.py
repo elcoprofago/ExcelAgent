@@ -15,8 +15,10 @@ import asistente
 import dialogos
 import dsapi
 import excel
+import actualizar
 import localmodels
 import meter
+import version
 
 FONDO_APP = '#CCE2F5'
 FONDO_CHAT = '#E8F4FF'
@@ -64,7 +66,10 @@ Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respa
 
 Arriba elegis el modelo: los de DeepSeek necesitan la API key (Configuracion); los [local] corren en esta PC, sin internet,
 pero son mas lentos. El esfuerzo es cuanto piensa antes de contestar: mas esfuerzo, mejores respuestas y mas tokens.
-La barra de consumo muestra los tokens usados desde que abriste el programa."""
+La barra de consumo muestra los tokens usados desde que abriste el programa.
+
+La version esta en el titulo de la ventana. Actualizar busca una version nueva y, si la hay, la instala guardando
+antes una copia de la actual."""
 
 
 def miles(n):
@@ -81,7 +86,8 @@ class Ventana:
 
     def __init__(self, cfg=None, stream_factory=None):
         self.raiz = tk.Tk()
-        self.raiz.title('ExcelAgent - asesor de Excel')
+        self.raiz.title(f'ExcelAgent {version.VERSION} - asesor de Excel')
+        self.actualizando = False
         self.raiz.geometry('1120x760')
         self.raiz.configure(bg=FONDO_APP)
         self.cfg = cfg or dsapi.Config()
@@ -199,6 +205,8 @@ class Ventana:
         tk.Label(barra, textvariable=self.saldo_var, bg=FONDO_APP, fg=COLOR_TITULO).pack(side='right', padx=(10, 4))
         tk.Button(barra, text='Reconectar', width=11, bg=FONDO_BOTON, command=self._reiniciar_conexion).pack(side='right', padx=(8, 0))
         tk.Button(barra, text='Ayuda', width=8, bg=FONDO_BOTON, command=self._ayuda).pack(side='right', padx=(10, 0))
+        self.boton_actualizar = tk.Button(barra, text='Actualizar', width=10, bg=FONDO_BOTON, command=self._actualizar)
+        self.boton_actualizar.pack(side='right', padx=(10, 0))
         caja = tk.Entry(barra, textvariable=self.ruta_var, state='readonly')
         caja.pack(side='left', fill='x', expand=True, padx=(10, 0))
 
@@ -868,6 +876,94 @@ class Ventana:
             self.boton_principal.configure(text=texto)
         self.pista.configure(text='Trabajando. Apreta Detener para cortar el trabajo.' if trabajando else PISTA_TEXTO)
 
+    # ------------------------------------------------------------ actualizar
+
+    def _actualizar(self):
+        'Boton Actualizar: busca la ultima release en GitHub y, si es mas nueva, la ofrece.'
+        if self.actualizando:
+            return
+        if self.en_pedido or self.ocupado_desde is not None:
+            messagebox.showinfo('Actualizar', 'Hay un trabajo en curso. Espera a que termine (o apreta Detener) y '
+                                              'proba de nuevo.')
+            return
+        self._marcar_actualizando(True)
+        self.bus.log('Buscando la ultima version publicada...')
+
+        def buscar():
+            try:
+                rel = actualizar.ultima_release()
+            except Exception as exc:
+                error = str(exc)        # 'exc' deja de existir al salir del except; la lambda corre despues
+                self.post(lambda: self._fin_actualizar(error))
+                return
+            self.post(lambda: self._ofrecer_version(rel))
+        threading.Thread(target=buscar, daemon=True).start()
+
+    def _ofrecer_version(self, rel):
+        if not actualizar.hay_nueva(rel):
+            self._fin_actualizar()
+            self.bus.log(f'Ya tenes la ultima version ({version.VERSION}).')
+            messagebox.showinfo('Actualizar', f'Ya tenes la ultima version ({version.VERSION}).')
+            return
+        notas = rel['notas'] if len(rel['notas']) <= 1500 else rel['notas'][:1500] + '...'
+        pregunta = (f'Hay una version nueva: {rel["nombre"]} (tenes la {version.VERSION}).\n\n'
+                    + (notas + '\n\n' if notas else '')
+                    + 'La instalo? Antes guardo una copia entera de la version actual en la carpeta '
+                      f'{actualizar.CARPETA_RESPALDOS}; si algo falla, vuelvo a dejarla como esta.')
+        if not messagebox.askyesno('Actualizar', pregunta):
+            self._fin_actualizar()
+            return
+        self.bus.log(f'Instalando la version {rel["version"]}...')
+        ultimo = [-1]
+
+        def avance(leido, total):
+            if total:
+                pct = min(100, leido * 100 // total)
+                if pct // 10 != ultimo[0]:          # de a 10 %: si no, el registro se llena de lineas
+                    ultimo[0] = pct // 10
+                    self.bus.progreso(pct, 'Descargando la version ' + rel['version'])
+
+        def instalar():
+            try:
+                respaldo = actualizar.actualizar(rel, avance=avance)
+            except Exception as exc:
+                error = str(exc)        # 'exc' deja de existir al salir del except; la lambda corre despues
+                self.post(lambda: self._fin_actualizar(error))
+                return
+            self.post(lambda: self._version_instalada(rel, respaldo))
+        threading.Thread(target=instalar, daemon=True).start()
+
+    def _version_instalada(self, rel, respaldo):
+        self._fin_actualizar()
+        self.bus.progreso(100, 'Version ' + rel['version'] + ' instalada')
+        self.bus.log(f'Version {rel["version"]} instalada. La anterior quedo guardada en {respaldo}.')
+        if messagebox.askyesno('Actualizar', f'Listo: quedo instalada la version {rel["version"]}.\n\n'
+                                             'La reinicio ahora? (si no, arranca la proxima vez que abras ExcelAgent)'):
+            self._al_cerrar()
+            actualizar.relanzar()
+
+    def _fin_actualizar(self, error=None):
+        self._marcar_actualizando(False)
+        if error:
+            self.bus.log('Actualizar: ' + error, 'error')
+            messagebox.showerror('Actualizar', error)
+
+    def _marcar_actualizando(self, si):
+        self.actualizando = si
+        self.boton_actualizar.configure(state='disabled' if si else 'normal')
+
+    def buscar_version_nueva(self):
+        'Al abrir: si hay una version publicada mas nueva, lo dice en el registro. Sin red no molesta.'
+        def buscar():
+            try:
+                rel = actualizar.ultima_release()
+                if actualizar.hay_nueva(rel):
+                    self.bus.log(f'Hay una version nueva de ExcelAgent ({rel["version"]}; tenes la {version.VERSION}). '
+                                 'Apreta Actualizar para instalarla.', 'warn')
+            except Exception:
+                pass
+        threading.Thread(target=buscar, daemon=True).start()
+
     def _al_cerrar(self):
         if self.ocupado_desde is not None or self.en_pedido:
             self._detener()
@@ -886,6 +982,7 @@ class Ventana:
 
 def main():
     ventana = Ventana()
+    ventana.buscar_version_nueva()      # aca y no en Ventana(): las pruebas no salen a internet
     ventana.raiz.mainloop()
 
 
