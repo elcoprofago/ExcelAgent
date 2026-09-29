@@ -3,6 +3,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import tempfile
+
+# La configuracion real (%APPDATA%\ExcelAgent) no se toca: cada corrida usa una carpeta propia.
+os.environ['EXCELAGENT_CONFIG_DIR'] = tempfile.mkdtemp(prefix='excelagent_cfg_')
+
 import gui
 
 
@@ -195,3 +200,106 @@ def test_boton_alterna_entre_enviar_y_detener():
     finally:
         v.raiz.destroy()
 
+
+
+class Stream:
+    'Como el real: cancel() corta la respuesta (el real cierra la conexion).'
+    def __init__(self, eventos):
+        self.eventos = eventos
+        self.cortado = False
+
+    def cancel(self):
+        self.cortado = True
+
+    def __iter__(self):
+        for e in self.eventos:
+            if self.cortado:
+                return
+            if callable(e):
+                e()
+            else:
+                yield e
+
+
+def esperar(v, condicion, segundos=5):
+    fin = gui.time.time() + segundos
+    while gui.time.time() < fin and not condicion():
+        v.raiz.update()
+        v._procesar_eventos()
+        gui.time.sleep(0.02)
+    return condicion()
+
+
+def test_pedido_completo_con_modelo_falso():
+    uso = ('usage', {'prompt_tokens': 1200, 'completion_tokens': 30, 'prompt_cache_hit_tokens': 1000})
+    v = gui.Ventana(stream_factory=lambda entry, msgs, tools: Stream(
+        [('content', 'Usa '), ('content', '=SUMA(A1:A3).'), uso, ('finish', 'stop')]))
+    try:
+        v.entrada.insert('1.0', 'como sumo?')
+        v._enviar()
+        assert v.en_pedido
+        assert esperar(v, lambda: not v.en_pedido)
+        chat = v.chat.get('1.0', 'end')
+        assert 'VOS: como sumo?' in chat
+        assert 'ASISTENTE: Usa =SUMA(A1:A3).' in chat
+        assert v.estado_var.get() == 'Listo'
+        tokens = v.tokens_var.get()
+        assert '1.230' in tokens and 'cache 1.000' in tokens
+        assert v.agente.totals['in'] == 1200
+    finally:
+        v.raiz.destroy()
+
+
+def test_sin_key_no_envia_y_conserva_el_texto():
+    v = gui.Ventana()
+    try:
+        assert v.agente.necesita_key()
+        v.entrada.insert('1.0', 'hola')
+        v._enviar()
+        v._procesar_eventos()
+        assert not v.en_pedido
+        assert v._texto_consigna() == 'hola'
+        assert 'API key' in v.chat.get('1.0', 'end')
+    finally:
+        v.raiz.destroy()
+
+
+def test_detener_corta_un_pedido_en_curso():
+    v = gui.Ventana()
+    try:
+        v.agente._stream_factory = v._stream_factory = lambda entry, msgs, tools: Stream(
+            [('content', 'empiezo')] + [lambda: gui.time.sleep(0.05)] * 200 + [('finish', 'stop')])
+        v.entrada.insert('1.0', 'algo largo')
+        v._enviar()
+        assert esperar(v, lambda: 'empiezo' in v.chat.get('1.0', 'end'))
+        v.boton_principal.invoke()
+        assert esperar(v, lambda: not v.en_pedido)
+        assert 'Interrumpido' in v.chat.get('1.0', 'end')
+    finally:
+        v.raiz.destroy()
+
+
+def test_selector_de_modelo_y_esfuerzo():
+    v = gui.Ventana()
+    try:
+        opciones = list(v.modelo_cb.cget('values'))
+        assert 'deepseek-flash' in ' '.join(opciones) and 'deepseek-v4-pro' in ' '.join(opciones)
+        pro = [o for o in opciones if 'deepseek-v4-pro' in o][0]
+        v.modelo_var.set(pro)
+        v._modelo_cambiado()
+        assert v.agente.model_id == 'deepseek-v4-pro' and v.cfg['model'] == 'deepseek-v4-pro'
+        assert list(v.esfuerzo_cb.cget('values')) == [gui.SIN_EFFORT, 'low', 'high', 'max']
+        v.esfuerzo_var.set('max')
+        v._esfuerzo_cambiado()
+        assert v.agente.effort == 'max' and v.cfg['effort'] == 'max'
+        # un modelo local sin razonamiento configurable deja el esfuerzo deshabilitado
+        v.agente.model_id = gui.localmodels.MODEL_ID_PREFIX + 'Z:/no/existe.gguf'
+        v._refrescar_esfuerzo()
+        assert str(v.esfuerzo_cb.cget('state')) == 'disabled'
+    finally:
+        v.raiz.destroy()
+
+
+def test_formato_de_miles():
+    assert gui.miles(1234567) == '1.234.567'
+    assert gui.miles(0) == '0'

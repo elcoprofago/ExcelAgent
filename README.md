@@ -1,152 +1,145 @@
-﻿# ExcelAgent
+# ExcelAgent
 
-Asistente local que trabaja sobre libros de Excel reales, usando el Excel instalado en esta PC
-mediante COM con pywin32. Tiene interfaz grafica con chat, boton para designar el archivo,
-registro de eventos y avance en porcentaje.
+Asesor de Excel para quien sabe poco de Excel. Se le pide algo con palabras comunes ("poneme el total abajo",
+"que los importes se vean como plata", "ordename por cliente") y un modelo de lenguaje interpreta el pedido,
+mira el libro abierto y lo resuelve con herramientas concretas sobre Excel, explicando lo que hizo.
 
-## Entorno ya instalado
+El modelo puede ser:
 
-- Python 3.13.15 con winget, alcance usuario
-- Entorno virtual: D:\REPOS\EXCEL\.venv
-- Librerias: pywin32 312, openpyxl 3.1.5, pytest 9.1.1
-- Excel 16.0 build 19127, automatizable por COM
+- DeepSeek por API key (pago por token), igual que en DeepSeekChat. Es el recomendado.
+- Un modelo local .gguf servido con llama-server, si la PC lo soporta. Funciona sin internet, pero los modelos
+  chicos (medido con Qwen3-4B y Qwen3.5-9B) se equivocan seguido al usar herramientas: ver "Modelos locales".
 
-## Como se usa
+## Entorno
 
-1. Doble clic en ExcelAgent.bat
-2. Boton Abrir Excel: elegi el libro (.xlsx, .xlsm, .xls, .xlsb). Se abre en Excel a la vista.
-3. Escribi la consigna en el cuadro de chat y apreta Enviar o Enter.
-4. El panel derecho muestra el registro de eventos y el avance en porcentaje.
+- Python 3.13 con un entorno virtual en la carpeta padre: `..\.venv` (fuera del repo, en `.gitignore`).
+- Dependencias: `requirements.txt` (pywin32, openpyxl, pytesseract, pillow, pytest). Los modulos de la API y de
+  modelos locales solo usan la biblioteca estandar.
+- Excel de escritorio para Windows (probado con Microsoft 365, version 16.0.20326). Outlook solo hace falta
+  para traer contactos.
 
-## Consignas que entiende
+Crear el entorno desde cero, parado en la carpeta del repo:
 
-    hojas | resumen | leer A1:C10
-    escribir 1500 en C2
-    formula =B2*C2 en D2
-    negrita en A1:C1 | sin negrita en A1:C1
-    color rojo en A1:A9 | fondo amarillo en A1:C1
-    formato moneda en C2:C50 (o numero, entero, porcentaje, fecha, texto)
-    sumar columna C | promedio columna C | maximo columna C | contar columna C
-    crear hoja Ventas | activar hoja Ventas | renombrar hoja A a B
-    ordenar por columna B descendente
-    reemplazar IVA por IVA21 | buscar IVA
-    quitar duplicados | autofiltro | quitar filtro | autoajustar
-    exportar csv D:/salida.csv
-    ejecutar macro MiMacro
-    guardar | guardar como D:/copia.xlsx
+    python -m venv ..\.venv
+    ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
-## Seguridad de tus archivos
-
-- Antes de tocar nada, el programa copia el libro a la subcarpeta _excelagent_respaldos.
-- Si el libro ya estaba abierto en tu Excel, se trabaja sobre esa misma ventana.
-- Al cerrar la interfaz se te pregunta si queres cerrar Excel tambien.
-- El libro se guarda cuando se lo pides con la consigna guardar.
-
-## Pruebas
-
-    D:\REPOS\EXCEL\.venv\Scripts\python.exe -m pytest D:\REPOS\EXCEL\ExcelAgent\tests -q
-
-Los scripts tests\probar_excel.py y tests\probar_excel2.py abren Excel de verdad
-sobre libros temporales y verifican el resultado con openpyxl.
-
-## Estructura
-
-    .venv                      entorno virtual con pywin32, openpyxl y pytest
-    ExcelAgent\app.py          nucleo: eventos, sesion COM, consignas y agente
-    ExcelAgent\gui.py          interfaz grafica
-    ExcelAgent\ExcelAgent.bat  lanzador
-    ExcelAgent\tests\          pruebas
-
-
-## A definir
-
-- Licencia: a definir
-- Autoria y copyright: a definir
-
-
-## Interfaz
-
-- Fondo general azul claro, panel de chat celeste claro y panel de registro en azul oscuro.
-- El registro usa texto enriquecido: verde para lo hecho, celeste para el avance, amarillo para avisos y rojo para errores.
-- El boton + adjunta archivos de texto o imagenes al chat.
-- El libro designado se abre minimizado; con la consigna mostrar excel se trae al frente.
-
-## Contactos de Outlook
-
-- Consigna: contactos de Outlook, o bien crea una tabla con los contactos de Outlook.
-- Necesita un perfil de Outlook configurado en esta PC. Hoy no hay ninguno, por eso responde
-  Outlook no devolvio contactos en la carpeta predeterminada.
-- Alternativa ya probada: guarda los contactos en un .txt, .csv o una imagen, adjuntala con el
-  boton + y despues usa la consigna volcar adjunto en A1.
-
-## Lectura de texto en imagenes
-
-- Motor: Tesseract 5.5.3 en D:\REPOS\EXCEL\tesseract, instalado sin permisos de administrador
-- Consignas: adjuntos, analizar adjunto, volcar adjunto en A1
-- Envoltura de Python: pytesseract y pillow en el entorno virtual
-- Idiomas cargados ademas de eng: spa, descargado aparte
-
-## Si Excel no responde
-
-Antes de conectarse, el asistente consulta si hay un Excel abierto y le da seis segundos
-para contestar. Si no contesta (por ejemplo, hay un cuadro de dialogo abierto o una celda en
-edicion), no se le cuelga encima: avisa en el registro y trabaja con una instancia nueva.
-
-Cuando eso pasa, el libro designado se abre en la instancia nueva, no en la ventana trabada.
-Para volver a trabajar sobre la original: destrabala en Excel (cerra el dialogo o sali de la
-edicion) y apreta el boton Reconectar.
-
-## Cuadro de consignas
-
-- Tiene tres lineas de alto como minimo y crece solo hasta diez mientras escribis.
-- Enter envia; Shift+Enter baja de linea.
-- Se pueden pegar varias consignas, una por linea.
-- Se ejecutan en orden y el avance se reparte entre ellas; todo queda en un mensaje.
-
-## Pendiente
-
-- Empaquetar como .exe para que no aparezca ninguna consola. Se hara cuando la app este
-  terminada; por ahora el lanzador usa pythonw.exe, que no abre consola.
-
-## Archivo .log
-
-Cada suceso tambien queda escrito en el proyecto, uno por dia.
-Esta en ExcelAgent\logs\excelagent_AAAAMMDD.log. Sirve para revisar despues que ocurrio.
+Si el entorno se copio desde otra PC, `..\.venv\pyvenv.cfg` apunta al Python de aquella (lineas `home` y
+`executable`). Corregir esas dos lineas para que apunten al Python 3.13 de esta PC alcanza; no hace falta rehacerlo.
 
 ## Lanzadores
 
-- ExcelAgent.vbs: doble clic. Arranca la aplicacion sin ninguna consola. Es el recomendado.
-- ExcelAgent.bat: hace lo mismo, delegando en el .vbs; la consola se cierra al instante.
-- Si preferis el acceso directo: apuntalo a pythonw.exe con gui.py como argumento, o al .vbs.
+- `ExcelAgent.vbs`: doble clic. Arranca sin consola. Es el recomendado.
+- `ExcelAgent.bat`: hace lo mismo, delegando en el .vbs.
+- Los dos buscan el entorno en `..\.venv` relativo a su propia carpeta: sirven igual en `D:\REPOS\EXCEL\ExcelAgent`
+  que en `F:\source\repos\EXCEL\ExcelAgent`. Si el entorno falta, lo dicen en vez de fallar callados.
 
-## Contactos desde los correos
+## Configuracion
 
-- Consigna: recopila los contactos de los correos enviados y recibidos, o cualquier frase
-  parecida que mencione contactos y correos. Tambien entiende listas numeradas (1-, 2-, 3.).
-- Recorre la Bandeja de entrada y los Elementos enviados, y arma dos columnas:
-  Nombre en la columna A y correo en la columna B, con el encabezado en negrita.
-- Por defecto mira los 1200 correos mas recientes de cada carpeta, unos 2 minutos.
-- Con la palabra todos recorre el buzon completo; medido: unos 16 minutos con 20.000 correos.
-- Si la carpeta de Contactos de Outlook esta vacia, usa los correos automaticamente.
+Boton **Configuracion** (se guarda solo al cerrar la ventana):
 
-## Tercera columna con numero de orden (agregado 27-09)
+- **API key**: la de DeepSeek (platform.deepseek.com, saldo prepago). Nunca se guarda en claro: cifrada con el
+  usuario de Windows o con una contrasena, a eleccion.
+- **Importar de DeepSeekChat**: copia la key y los ajustes de modelos locales de
+  `%APPDATA%\DeepSeekChat\config.json`. La key no pasa por la pantalla.
+- **Modelos locales**: carpetas donde buscar `.gguf`, ruta de `llama-server.exe`, contexto con que se arranca.
+- **Avanzado**: permisos, maximo de tokens por respuesta y presupuesto de tokens de la jornada (el 100% de la
+  barra de consumo).
+- **Permisos**: "Preguntar antes de pisar, borrar o guardar" (predeterminado), "Pisar datos sin preguntar
+  (borrar y guardar, si)" o "No preguntar nada".
 
-Si la consigna pide 'numero de orden', 'numeracion' o 'columna de orden', se agrega
-una tercera columna C con el orden de cada contacto.
+La configuracion vive en `%APPDATA%\ExcelAgent\config.json` (o en la carpeta que indique la variable
+`EXCELAGENT_CONFIG_DIR`).
 
-## Aclaraciones sobre 'todos'
+## Interfaz
 
-- 'traer todos los contactos' significa la lista completa de contactos: NO recorre todo el buzon.
-- Para recorrer el buzon entero hay que decirlo asi: 'todo el buzon', 'buzon completo',
-  'todos los correos', 'todos los mensajes' o 'sin limite'.
+- **Abrir Excel**: elige el libro. Si ya estaba abierto en tu Excel, se trabaja sobre esa misma ventana.
+- **+**: adjunta un archivo (texto, csv, imagen) para que el asistente lo lea o lo vuelque en la hoja.
+- **Modelo** y **Esfuerzo**: selector del modelo (DeepSeek o locales encontrados) y del nivel de razonamiento.
+- **Medidor**: que esta haciendo (pensando, razonando, trabajando en Excel, esperando permiso), una barra con los
+  tokens del dia contra el presupuesto, el detalle de entrada (con cache), salida (con razonamiento) y la
+  velocidad en tok/s. El boton ⟳ consulta el saldo de la cuenta de DeepSeek.
+- **Nueva charla**: olvida la conversacion (el libro queda como esta).
+- **Enviar / Detener**: Detener corta el trabajo en curso, incluido un recorrido largo de Outlook.
+- **Reconectar**: vuelve a buscar el Excel abierto (ver "Si Excel no responde").
+- A la derecha, el registro de eventos y avance: cada herramienta que usa el asistente y su resultado.
 
+## Seguridad de tus archivos
 
-## Guardar una copia, renombrar y liberar el libro (agregado 27-09)
+- Antes de tocar nada, el libro se copia a la subcarpeta `_excelagent_respaldos` junto al libro.
+- Segun la aprobacion elegida, el asistente pregunta antes de pisar datos, borrar o guardar.
+- El libro se guarda solo cuando se lo pedis.
+- Si el asistente repite la misma accion sin avanzar, se corta solo en vez de gastar tokens.
+- Al cerrar la interfaz con un Excel conectado se pregunta si cerrarlo tambien.
 
-- Consigna: salvala como contacto-clean en el escritorio; guardala en mis documentos; libera el proceso.
-- Se pueden pedir juntas en un mismo mensaje.
-- Guardar como: genera una copia con el nombre indicado y deja intacto el original.
-- Si ya existe un archivo con ese nombre, avisa y no lo sobrescribe.
-- Liberar: deja libre el libro; si el Excel lo habia abierto el asistente, tambien finaliza esa instancia.
-- Si el libro tenia cambios pendientes, los graba antes de dejarlo.
+## Que sabe hacer
 
+Leer y buscar; escribir valores y formulas; rellenar formulas; formatos de numero (moneda, porcentaje, miles,
+fechas), fuentes y colores; autoajustar columnas; ordenar, filtrar, tablas, quitar duplicados, reemplazar,
+borrar; insertar y eliminar filas o columnas; hojas; graficos; formato condicional; listas desplegables;
+inmovilizar paneles; guardar, guardar copia, exportar a CSV; manejar la ventana de Excel; leer y pegar adjuntos;
+traer contactos de Outlook.
+
+Las formulas se escriben en ingles y Excel las muestra en castellano. Los formatos de numero tambien viajan en
+ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moneda" se veia `$ 1234,5000`.
+
+## Contactos de Outlook
+
+- Pedido: "traeme los contactos de Outlook", o "armame una tabla con los contactos de mis correos".
+- Necesita un perfil de Outlook configurado. Un Outlook instalado sin cuenta se queda en el asistente de
+  bienvenida: Detener corta la espera.
+- Si la carpeta de Contactos esta vacia, junta remitentes y destinatarios de la Bandeja de entrada y de Elementos
+  enviados: por defecto los 1200 correos mas recientes de cada carpeta (unos 2 minutos). Pidiendo "todos",
+  recorre el buzon completo; medido: unos 16 minutos con 20.000 correos.
+
+## Lectura de texto en imagenes
+
+- Motor: Tesseract 5.5.3 en `..\tesseract` (fuera del repo), con los idiomas eng y spa. Tambien se busca en
+  `C:\Program Files\Tesseract-OCR` o donde indique la variable `TESSERACT_CMD`.
+- Envoltura de Python: pytesseract y pillow en el entorno virtual.
+
+## Si Excel no responde
+
+Antes de conectarse, el asistente consulta si hay un Excel abierto y le da seis segundos para contestar. Si no
+contesta (un cuadro de dialogo abierto, una celda en edicion), no se le cuelga encima: avisa en el registro y
+trabaja con una instancia nueva. Para volver a la original: destrabala en Excel y apreta **Reconectar**.
+
+## Modelos locales
+
+Se arrancan con llama-server al primer pedido y se apagan al salir. Pruebas reales del
+29/09/2026 con el mismo pedido coloquial (ordenar, formatear como moneda, poner un total):
+
+- DeepSeek Flash: todo correcto, 8 herramientas, unos 24.000 tokens de entrada.
+- Qwen3-4B-Instruct: ordeno bien, formato equivocado, no puso el total.
+- Qwen3.5-9B: ordeno y formateo bien, despues repitio una escritura vacia hasta el tope de pasos. Eso dejo dos
+  correcciones: la escritura vacia ahora es un error y la repeticion identica corta el bucle.
+
+## Archivo .log
+
+Un archivo por dia en `logs\excelagent_AAAAMMDD.log` (en `.gitignore`).
+
+## Pruebas
+
+    ..\.venv\Scripts\python.exe -m pytest tests -q
+
+- Abren Excel sin ventana y trabajan con libros de juguete en una carpeta temporal. Tardan unos dos minutos.
+- `tests\de_deepseekchat\`: los chequeos de la API, la configuracion, el medidor y los modelos locales traidos de
+  DeepSeekChat, adaptados. El de modelos locales usa archivos .gguf falsos dispersos (no ocupan disco) y los borra
+  aunque la prueba muera a mitad de camino.
+- No usan la API key real ni gastan tokens: el modelo se reemplaza por un guion.
+- La prueba de graficos fallo una vez de cada varias corridas sin causa encontrada; repetida, pasa.
+
+## Estructura
+
+    gui.py            Interfaz tkinter
+    dialogos.py       Configuracion, API key, importar de DeepSeekChat, aprobaciones
+    asistente.py      Une la GUI con el modelo elegido y con Excel; cuenta tokens
+    agente.py         Bucle modelo -> herramientas -> modelo, con freno ante repeticiones
+    prompts.py        Instrucciones del asesor
+    herramientas.py   Las herramientas que el modelo puede usar sobre Excel
+    excel.py          Sesion COM con Excel, respaldos, adjuntos, OCR, Outlook
+    dsapi.py          API de DeepSeek y configuracion (de DeepSeekChat)
+    localmodels.py    Modelos .gguf con llama-server (de DeepSeekChat)
+    meter.py          Medidor de tokens (de DeepSeekChat)
+    secret.py         Cifrado de la key (de DeepSeekChat)
+    limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
+    tests\            Pruebas
