@@ -19,7 +19,7 @@ TAB = chr(9)
 IMAGENES = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp', '.gif')
 TEXTOS = ('.txt', '.log', '.md', '.markdown', '.csv', '.tsv', '.json', '.xml', '.html', '.htm')
 PLANILLAS = ('.xlsx', '.xlsm', '.xls', '.xlsb', '.ods')
-DOCUMENTOS = ('.docx', '.docm', '.odt', '.doc', '.rtf')
+DOCUMENTOS = ('.docx', '.docm', '.odt', '.doc', '.rtf', '.pdf')
 CONTACTOS = ('.vcf',)
 ACEPTADOS = IMAGENES + TEXTOS + PLANILLAS + DOCUMENTOS + CONTACTOS
 
@@ -27,7 +27,7 @@ ACEPTADOS = IMAGENES + TEXTOS + PLANILLAS + DOCUMENTOS + CONTACTOS
 TIPOS_DIALOGO = [
     ('Todos los que entiendo', ' '.join('*' + e for e in ACEPTADOS)),
     ('Planillas (Excel, OpenOffice)', '*.xlsx *.xlsm *.xls *.xlsb *.ods *.csv *.tsv'),
-    ('Documentos (Word, OpenOffice, Markdown)', '*.docx *.docm *.doc *.odt *.rtf *.md *.txt'),
+    ('Documentos (Word, PDF, OpenOffice, Markdown)', '*.docx *.docm *.doc *.pdf *.odt *.rtf *.md *.txt'),
     ('Contactos (agenda del telefono)', '*.vcf *.csv'),
     ('Imagenes', ' '.join('*' + e for e in IMAGENES)),
     ('Todos los archivos', '*.*'),
@@ -71,6 +71,8 @@ def leer(ruta):
         return _documento(*leer_odt(ruta))
     if ext in ('.doc', '.rtf'):
         return _documento(*leer_con_word(ruta))
+    if ext == '.pdf':
+        return leer_pdf(ruta)
     if _parece_binario(ruta):
         raise ExcelError('No se leer archivos ' + (ext or 'sin extension') + '. Acepto: ' + ', '.join(ACEPTADOS))
     return _de_texto('texto', excel.leer_texto(ruta))
@@ -138,6 +140,93 @@ def _recortar(filas):
 def _parece_binario(ruta):
     with open(ruta, 'rb') as f:
         return b'\x00' in f.read(4096)
+
+
+# ------------------------------------------------------------ PDF
+
+_COLUMNAS_PDF = re.compile(r' {2,}')
+
+
+def leer_pdf(ruta):
+    """El texto de cada pagina con pypdf en modo 'layout', que respeta la posicion: las columnas de una tabla quedan
+    separadas por dos o mas espacios (en el modo comun quedaban pegadas). Las paginas sin texto (un PDF escaneado) se
+    leen por OCR desde la imagen que traen adentro. Las tablas son las tandas de lineas seguidas con 2 o mas columnas."""
+    try:
+        import pypdf
+    except ImportError:
+        raise ExcelError('Falta pypdf en el entorno virtual: correr ..\\.venv\\Scripts\\python.exe -m pip install -r '
+                         'requirements.txt')
+    nombre = os.path.basename(ruta)
+    try:
+        lector = pypdf.PdfReader(ruta)
+        if lector.is_encrypted and not lector.decrypt(''):
+            raise ExcelError(nombre + ' tiene contrasena: abrilo, copia el texto y pegamelo en el mensaje')
+        paginas = list(lector.pages)
+    except ExcelError:
+        raise
+    except Exception as exc:
+        raise ExcelError('No pude leer el PDF ' + nombre + ': ' + str(exc)[:120])
+    bloques, tablas, todas, por_ocr = [], [], [], 0
+    for n, pagina in enumerate(paginas, 1):
+        try:
+            texto = pagina.extract_text(extraction_mode='layout') or ''
+        except Exception:
+            texto = pagina.extract_text() or ''
+        if not texto.strip():
+            texto = _ocr_pagina(pagina)
+            por_ocr += 1 if texto.strip() else 0
+        lineas = [l.rstrip() for l in texto.splitlines() if l.strip()]
+        bloques.append('== Pagina ' + str(n) + ' ==' + NL + NL.join(lineas))
+        tablas.extend(_tablas_de_lineas(lineas))
+        todas.extend(lineas)
+    texto = (NL + NL).join(bloques)
+    if not todas:
+        raise ExcelError(nombre + ' no tiene texto que se pueda leer (y el OCR no reconocio nada): mandame una captura '
+                         'de pantalla de la pagina, o copia el texto y pegamelo en el mensaje')
+    if por_ocr:
+        texto = ('(' + str(por_ocr) + ' pagina(s) escaneadas, leidas por OCR: revisar numeros y nombres)' + NL + texto)
+    partes = [{'nombre': 'Tabla ' + str(i), 'filas': t} for i, t in enumerate(tablas, 1)]
+    if not partes:
+        partes = [{'nombre': 'Texto', 'filas': [[c for c in _COLUMNAS_PDF.split(l.strip()) if c] for l in todas]}]
+    return {'clase': 'documento', 'texto': texto, 'partes': partes}
+
+
+def _tablas_de_lineas(lineas):
+    tablas, actual = [], []
+    for l in lineas:
+        celdas = [c for c in _COLUMNAS_PDF.split(l.strip()) if c]
+        if len(celdas) >= 2:
+            actual.append(celdas)
+        else:
+            if len(actual) >= 2:
+                tablas.append(actual)
+            actual = []
+    if len(actual) >= 2:
+        tablas.append(actual)
+    return tablas
+
+
+def _ocr_pagina(pagina):
+    'OCR de la imagen mas grande de una pagina (la hoja escaneada). Vacio si no trae imagenes o no hay OCR.'
+    try:
+        imagenes = list(pagina.images)
+    except Exception:
+        return ''
+    if not imagenes:
+        return ''
+    img = max(imagenes, key=lambda i: len(i.data))
+    fd, tmp = tempfile.mkstemp(suffix=os.path.splitext(img.name)[1] or '.png', prefix='excelagent-pdf-')
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(img.data)
+        return excel.ocr_imagen(tmp)
+    except ExcelError:
+        return ''
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 # ------------------------------------------------------------ Markdown

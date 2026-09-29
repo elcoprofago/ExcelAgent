@@ -599,14 +599,11 @@ def partir_filas(texto):
     return filas
 
 
-def valor_celda(t):
-    'Convierte a numero solo lo que es claramente numerico, respetando ceros a la izquierda.'
-    s = t.strip()
-    if not re.fullmatch('[+-]?[0-9]+([.,][0-9]+)?', s):
-        return t
-    if len(s.lstrip('+-')) > 1 and s.lstrip('+-')[0] == '0':
-        return t
-    return valor(s)
+def valor_celda(t, decimal=','):
+    'El numero o la fecha que escribe un texto (ver numeros.py); los codigos con ceros adelante y el resto, tal cual.'
+    import numeros
+    v, _ = numeros.interpretar(t, decimal)
+    return t if isinstance(v, str) else v
 
 
 def leer_texto(ruta):

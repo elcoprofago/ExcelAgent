@@ -119,6 +119,57 @@ def test_xls_viejo_se_lee_con_una_instancia_propia_de_excel(tmp_path):
     assert r['partes'][0]['filas'] == [['Codigo', 'Monto'], ['007', 12.5]]
 
 
+def test_pdf_con_texto_saca_las_columnas_de_la_tabla(tmp_path):
+    # El PDF lo arma Word ('Guardar como PDF'), como los que recibe el usuario.
+    import pywintypes
+    import win32com.client
+    try:
+        pywintypes.IID('Word.Application')
+    except pywintypes.com_error:
+        pytest.skip('Word no esta instalado: no hay con que armar el PDF de prueba')
+    wd = win32com.client.DispatchEx('Word.Application')
+    try:
+        d = wd.Documents.Add()
+        d.Content.Text = 'Lista de precios'
+        d.Content.InsertParagraphAfter()
+        t = d.Tables.Add(d.Paragraphs(d.Paragraphs.Count).Range, 2, 3)
+        for j, v in enumerate(('Yerba mate 1 kg', '1.500,50', '01/09/2026'), 1):
+            t.Cell(2, j).Range.Text = v
+        for j, v in enumerate(('Producto', 'Precio', 'Fecha'), 1):
+            t.Cell(1, j).Range.Text = v
+        d.SaveAs2(str(tmp_path / 'precios.pdf'), 17)
+        d.Close(False)
+    finally:
+        wd.Quit()
+    r = adjuntos.leer(str(tmp_path / 'precios.pdf'))
+    assert r['clase'] == 'documento'
+    assert r['partes'][0]['filas'] == [['Producto', 'Precio', 'Fecha'], ['Yerba mate 1 kg', '1.500,50', '01/09/2026']]
+    assert 'Lista de precios' in r['texto']
+
+
+def test_pdf_escaneado_se_lee_por_ocr(tmp_path):
+    import excel
+    if not excel.ruta_tesseract():
+        pytest.skip('No hay tesseract.exe en esta PC')
+    from PIL import Image, ImageDraw, ImageFont
+    img = Image.new('RGB', (1200, 300), 'white')
+    ImageDraw.Draw(img).text((40, 100), 'Maria 1144443333', fill='black', font=ImageFont.truetype('arial.ttf', 48))
+    img.save(tmp_path / 'escaneado.pdf')
+    r = adjuntos.leer(str(tmp_path / 'escaneado.pdf'))
+    assert 'Maria 1144443333' in r['texto']
+    assert 'OCR' in r['texto']          # el aviso de revisar lo leido
+
+
+def test_pdf_sin_texto_ni_imagen_pide_otra_via(tmp_path):
+    import pypdf
+    w = pypdf.PdfWriter()
+    w.add_blank_page(200, 200)
+    with open(tmp_path / 'vacio.pdf', 'wb') as f:
+        w.write(f)
+    with pytest.raises(ExcelError, match='captura'):
+        adjuntos.leer(str(tmp_path / 'vacio.pdf'))
+
+
 def test_doc_viejo_se_lee_con_word(tmp_path):
     import pywintypes
     import win32com.client

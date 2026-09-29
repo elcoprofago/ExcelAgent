@@ -15,7 +15,7 @@ MAX_READ_CELLS = 2000
 MAX_TEXT_CELLS = 400        # leer .Text es una llamada COM por celda
 MAX_WRITE_CELLS = 20000
 MAX_ATTACHMENT_CHARS = 8000
-MAX_DATE_FORMATS = 2000     # al pegar, el formato de fecha se pone celda por celda
+MAX_FORMAT_CALLS = 2000     # al pegar, los formatos de numero y fecha se ponen por tramos de columna
 MAX_FIND_HITS = 50
 
 # Los errores de celda llegan por Value2 como estos enteros (CVErr).
@@ -102,6 +102,61 @@ def list_separator(app):
         return ','
 
 
+def decimal_separator(app):
+    'xlDecimalSeparator de Excel: con que separador decimal se leen los numeros escritos como texto sin otra pista.'
+    try:
+        intl = app.International
+        sep = str(intl[2] if isinstance(intl, tuple) else app.International(3))
+        return sep if sep in ('.', ',') else ','
+    except Exception:
+        return ','
+
+
+def interpret_columns(rows, decimal):
+    """Los textos de cada columna convertidos en numeros y fechas con la convencion de esa columna (numeros.py).
+    Solo los textos comunes: no las formulas ni lo ya marcado como numeros.Texto. Devuelve las filas nuevas y
+    [(fila, columna, formato)] para las celdas que necesitan un formato."""
+    import numeros
+    width = max((len(r) for r in rows), default=0)
+    conv = [numeros.convencion([r[i] for r in rows if i < len(r)], decimal) for i in range(width)]
+    out, formats = [], []
+    for ri, r in enumerate(rows):
+        new = []
+        for ci, v in enumerate(r):
+            if type(v) is str and not v.lstrip().startswith('='):
+                v, f = numeros.interpretar(v, *conv[ci])
+                if f:
+                    formats.append((ri, ci, f))
+            new.append(v)
+        out.append(new)
+    return out, formats
+
+
+def apply_formats(target, formats, limit=2000):
+    """Pone los formatos de numero por tramos: celdas seguidas de una columna con el mismo formato van en una sola
+    llamada COM. Devuelve cuantas celdas quedaron sin formato por pasar el limite de llamadas."""
+    groups = {}
+    for r, c, f in formats:
+        groups.setdefault((c, f), []).append(r)
+    calls, left = 0, 0
+    for (c, f), rs in groups.items():
+        rs.sort()
+        start = prev = rs[0]
+        for r in rs[1:] + [None]:
+            if r is not None and r == prev + 1:
+                prev = r
+                continue
+            if calls < limit:
+                # Worksheet.Range: target.Range(...) se resuelve relativo a target y fuera de A1 caia en otra celda
+                set_number_format(target.Worksheet.Range(target.Cells(start + 1, c + 1), target.Cells(prev + 1, c + 1)), f)
+                calls += 1
+            else:
+                left += prev - start + 1
+            if r is not None:
+                start = prev = r
+    return left
+
+
 def set_number_format(r, code):
     """NumberFormat con un codigo en ingles. Por pywin32 la propiedad viaja con el idioma del usuario: en este Excel en
     espanol '$ #,##0.00' asignado directo se veia '$ 1234,5000'. Medido: con LCID 1033 se ve '$ 1.234,50'."""
@@ -119,11 +174,24 @@ def serial(v):
     return (v.replace(tzinfo=None) - datetime.datetime(1899, 12, 30)).total_seconds() / 86400
 
 
-def keep_text(v):
-    # Excel convierte '007' en el numero 7 al escribirlo; con apostrofo queda como texto, igual que al tipearlo.
-    if isinstance(v, str) and re.fullmatch(r'[+-]?0[0-9]+([.,][0-9]+)?', v.strip()):
+def to_cell(v):
+    'Un valor ya interpretado como va por COM: fechas como numero de serie, numeros.Texto con apostrofo.'
+    import numeros
+    if v is None:
+        return ''
+    if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+        return serial(v)
+    if isinstance(v, numeros.Texto):
         return "'" + v
     return v
+
+
+def date_format(v):
+    if isinstance(v, datetime.time):
+        return 'hh:mm'
+    if isinstance(v, datetime.datetime) and v.time() != datetime.time():
+        return 'dd/mm/yyyy hh:mm'
+    return 'dd/mm/yyyy'
 
 
 def addr(r):
@@ -331,14 +399,13 @@ class ToolBox:
             raise ToolError('values has no cells: each row must list its cell values, like [["Total","=SUM(B2:B5)"]]')
         if len(rows) * width > MAX_WRITE_CELLS:
             raise ToolError(f'too many cells in one call ({len(rows) * width}); write at most {MAX_WRITE_CELLS}')
-        data = []
         for r in rows:
-            cells = []
-            for v in r + [None] * (width - len(r)):
-                if isinstance(v, (dict, list)):
-                    raise ToolError('each cell must be a text, a number, a boolean or null')
-                cells.append('' if v is None else v)
-            data.append(tuple(cells))
+            if any(isinstance(v, (dict, list)) for v in r):
+                raise ToolError('each cell must be a text, a number, a boolean or null')
+        # '1.500', '$ 1.500', '15%' o '01/09/2026' como texto: por Formula Excel los lee como en EE.UU. (1,5 y el 9 de
+        # enero) o los deja como texto. Se convierten antes, con la convencion de cada columna.
+        rows, formats = interpret_columns(rows, decimal_separator(self.s.app))
+        data = tuple(tuple(to_cell(v) for v in r + [None] * (width - len(r))) for r in rows)
         h = self._sheet(sheet)
         start = self._range(h, start_cell).Cells(1, 1)
         target = h.Range(start, h.Cells(start.Row + len(data) - 1, start.Column + width - 1))
@@ -346,7 +413,8 @@ class ToolBox:
         if n and not self._ask('edit', f'Pisar {n} celda(s) con datos en {addr(target)}',
                                'Van a quedar reemplazadas, entre otras: ' + ', '.join(sample)):
             return self._denied(f'overwriting {n} non-empty cell(s) in {addr(target)}')
-        target.Formula = tuple(data)
+        target.Formula = data
+        apply_formats(target, formats)
         errs = self._errors_in(target)
         out = f"Wrote {len(data)} x {width} cells in '{h.Name}'!{addr(target)}.\n" + self._preview(target)
         if errs:
@@ -774,41 +842,38 @@ class ToolBox:
                                f"Con el contenido de {a['nombre']}. Hoy tienen, entre otras: " + ', '.join(sample)):
             return self._denied(f'overwriting {n} non-empty cell(s) in {addr(target)}')
         # Telefonos como texto: si no, Excel les saca el '+' y los ceros, los muestra como 5,49116E+12, o toma
-        # '+54 9 11 ...' por formula. Por el encabezado de la columna o por la forma del valor.
-        # Las planillas traen valores con tipo: los numeros pasan tal cual y las fechas como numero de serie (Value2
-        # no acepta fechas), con el formato de fecha puesto despues.
+        # '+54 9 11 ...' por formula. Por el encabezado de la columna o por la forma del valor (una fecha con guiones
+        # tambien tiene forma de telefono: se mira antes).
+        # Los numeros y fechas escritos como texto se convierten (numeros.py); los de las planillas ya traen su tipo.
+        # Las fechas van como numero de serie (Value2 no las acepta) con el formato puesto despues. El resto del texto
+        # va con apostrofo: si no, Excel lo interpreta como en EE.UU. ('1-2' seria el 2 de enero, 'TRUE' un booleano).
         import contactos
+        import numeros
         tel = [contactos.es_columna_telefono(t) for t in filas[0]] + [False] * width
-        fechas = []
-
-        def cell(r, i, v):
-            if v is None:
-                return ''
-            if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
-                fechas.append((r, i, v))
-                return serial(v)
-            if not isinstance(v, str):
-                if r and tel[i] and isinstance(v, int) and not isinstance(v, bool):
-                    return "'" + str(v)
-                return v
-            if tel[i] or contactos.parece_telefono(v):
-                return "'" + v if v.strip() else v
-            return keep_text(excel.valor_celda(v))
-        data = tuple(tuple([cell(r, i, v) for i, v in enumerate(f)] + [''] * (width - len(f)))
-                     for r, f in enumerate(filas))
+        rows = []
+        for r, f in enumerate(filas):
+            row = []
+            for i, v in enumerate(f):
+                if isinstance(v, str) and v.strip() and (tel[i] or (contactos.parece_telefono(v) and not numeros.es_fecha(v))):
+                    v = numeros.Texto(v.strip())
+                elif r and tel[i] and isinstance(v, int) and not isinstance(v, bool):
+                    v = numeros.Texto(str(v))
+                row.append(v)
+            rows.append(row)
+        rows, formats = interpret_columns(rows, decimal_separator(self.s.app))
+        con_formato = {(r, i) for r, i, _ in formats}
+        for r, row in enumerate(rows):
+            for i, v in enumerate(row):
+                if isinstance(v, (datetime.datetime, datetime.date, datetime.time)) and (r, i) not in con_formato:
+                    formats.append((r, i, date_format(v)))
+                elif type(v) is str and v.strip():
+                    row[i] = numeros.Texto(v)
+        data = tuple(tuple([to_cell(v) for v in row] + [''] * (width - len(row))) for row in rows)
         target.Value2 = data
-        for r, i, v in fechas[:MAX_DATE_FORMATS]:
-            if isinstance(v, datetime.time):
-                codigo = 'hh:mm'
-            elif isinstance(v, datetime.datetime) and v.time() != datetime.time():
-                codigo = 'dd/mm/yyyy hh:mm'
-            else:
-                codigo = 'dd/mm/yyyy'
-            set_number_format(target.Cells(r + 1, i + 1), codigo)
         extra = ''
-        if len(fechas) > MAX_DATE_FORMATS:
-            extra += (f'\n{len(fechas) - MAX_DATE_FORMATS} more date cells were left as numbers without a date format: '
-                      'give them one with format_range.')
+        sin = apply_formats(target, formats, MAX_FORMAT_CALLS)
+        if sin:
+            extra += f'\n{sin} cells were left without their number or date format: give it with format_range.'
         otras = [p['nombre'] for p in a.get('partes') or [] if p is not parte and p['filas']]
         if otras:
             extra += f"\nOther parts of the attachment, not pasted: {', '.join(otras)} (paste them with source)."
@@ -914,11 +979,11 @@ SPECS = [
     _fn('excel_window', 'Show the Excel window to the user, or minimize it.',
         {'action': {'type': 'string', 'enum': ['show', 'minimize']}}, []),
     _fn('read_attachment', "Read a file the user attached with the '+' button: text, Markdown or CSV; a spreadsheet "
-        '(Excel or OpenOffice, every sheet); a document (Word, OpenOffice or RTF, its tables apart); contacts exported '
+        '(Excel or OpenOffice, every sheet); a document (Word, PDF, OpenOffice or RTF, its tables apart); contacts exported '
         'as vCard .vcf or CSV; or an image such as a screenshot, read by OCR.',
         {'index': {'type': 'integer', 'description': 'Attachment number; default the last one'}}, []),
     _fn('paste_attachment', 'Paste the rows of an attachment into the sheet: one sheet of a spreadsheet, one table of a '
-        'document, or the lines of a text split by tab, ; or ,. Numbers and dates of spreadsheets are kept. Contacts '
+        'document, or the lines of a text split by tab, ; or ,. Numbers and dates are kept, also when written as text. Contacts '
         'come as Nombre, Telefono, Otros telefonos, Correo; phone numbers are kept as text.',
         {'start_cell': {'type': 'string'}, 'index': {'type': 'integer'}, 'sheet': _SHEET,
          'source': {'type': 'string', 'description': 'Which part of the attachment (sheet name, or its number as '

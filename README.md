@@ -13,7 +13,7 @@ El modelo puede ser:
 ## Entorno
 
 - Python 3.13 con un entorno virtual en la carpeta padre: `..\.venv` (fuera del repo, en `.gitignore`).
-- Dependencias: `requirements.txt` (pywin32, openpyxl, pytesseract, pillow, pytest). Los modulos de la API y de
+- Dependencias: `requirements.txt` (pywin32, openpyxl, pypdf, pytesseract, pillow, pytest). Los modulos de la API y de
   modelos locales solo usan la biblioteca estandar.
 - Excel de escritorio para Windows (probado con Microsoft 365, version 16.0.20326). Outlook solo hace falta
   para traer contactos.
@@ -95,11 +95,16 @@ Lo que se puede adjuntar con **+** (`adjuntos.py`):
 
 - Planillas: `.xlsx`, `.xlsm`, `.ods` (OpenOffice/LibreOffice), `.csv`, `.tsv`; todas las hojas, con numeros y
   fechas conservados. `.xls` y `.xlsb` se abren con Excel, en una instancia aparte que se cierra al terminar.
-- Documentos: `.docx`, `.odt`, `.md` (sus tablas se pegan como tablas; sin tablas, el texto linea por linea).
+- Documentos: `.docx`, `.odt`, `.md`, `.pdf` (sus tablas se pegan como tablas; sin tablas, el texto linea por linea).
+  Del PDF se lee el texto con `pypdf` respetando la posicion, y las columnas de una tabla salen de los espacios; las
+  paginas escaneadas (sin texto) se leen por OCR desde la imagen que traen.
   `.doc` y `.rtf` necesitan Word instalado (se convierten a `.docx` en una instancia aparte); sin Word, el
   asistente pide guardarlos como `.docx` u `.odt`.
 - Textos (`.txt`, `.log`, `.json`, `.xml`, `.html`), contactos (`.vcf`) e imagenes (por OCR).
-- PDF no: no hay con que leerlo sin sumar una biblioteca.
+- Numeros y fechas escritos como texto se convierten al pegar y al escribir (`numeros.py`): `1.500`, `1.500,50`,
+  `$ 1.500`, `15%`, `01/09/2026`. Lo ambiguo (`1.500`: ¿mil quinientos o uno coma cinco?) se decide por el resto de
+  la columna y, sin pistas, con el separador decimal del Excel del usuario. Quedan como texto los codigos con ceros
+  adelante (`007`), los telefonos y los numeros de mas de 15 cifras (un CBU), que Excel guardaria redondeados.
 
 ## Contactos del telefono (y de WhatsApp)
 
@@ -177,7 +182,8 @@ linea (antes, una linea por cada pieza del texto).
     dsapi.py          API de DeepSeek y configuracion
     localmodels.py    Modelos .gguf con llama-server
     meter.py          Medidor de tokens
-    adjuntos.py       Lee lo adjuntado con +: planillas, documentos, textos, imagenes
+    adjuntos.py       Lee lo adjuntado con +: planillas, documentos, PDF, textos, imagenes
+    numeros.py        Numeros y fechas escritos como texto -> valores de Excel
     contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)

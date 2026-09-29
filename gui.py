@@ -58,7 +58,7 @@ AYUDA = """Soy tu asesor de Excel. Pedime las cosas como te salgan, por ejemplo:
 - "como hago para que la primera fila quede fija?"
 
 Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas otra planilla
-(Excel, OpenOffice, csv), un documento (Word, OpenOffice, .md), una imagen o los contactos exportados del telefono
+(Excel, OpenOffice, csv), un documento (Word, PDF, OpenOffice, .md), una imagen o los contactos exportados del telefono
 (.vcf) para leerlos o volcarlos en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
 
 Arriba elegis el modelo: los de DeepSeek necesitan la API key (Configuracion); los [local] corren en esta PC, sin internet,

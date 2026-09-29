@@ -385,6 +385,33 @@ def test_planilla_adjunta_pega_la_hoja_pedida_con_fechas_y_numeros(libro, sesion
         sesion.adjuntos = []
 
 
+def test_numeros_y_fechas_escritos_como_texto_llegan_como_numeros(libro, sesion, tmp_path):
+    # Antes '1.500' quedaba 1,5, '$ 1.500' y '15%' como texto, y '01/09/2026' Excel lo leia como 9 de enero.
+    tb, _, _ = libro()
+    archivo = tmp_path / 'precios.txt'
+    archivo.write_text('Producto;Precio;Desc;Fecha;Codigo;Obs\n'
+                       'Yerba;1.500;15%;01/09/2026;007;1-2\n'
+                       'Azucar;$ 980,50;5%;25/09/2026;12;TRUE\n', encoding='utf-8')
+    try:
+        sesion.adjuntos = [excel.procesar_adjunto(str(archivo))]
+        tb.execute('paste_attachment', {'start_cell': 'A1', 'sheet': 'Control'})
+        h = sesion.wb.Worksheets('Control')
+        assert h.Range('B2').Value2 == 1500
+        assert h.Range('B3').Value2 == 980.5 and h.Range('B3').Text.startswith('$')
+        assert h.Range('C2').Value2 == 0.15 and h.Range('C2').Text == '15%'
+        assert h.Range('D2').Value2 == 46266 and h.Range('D2').Text == '01/09/2026'
+        assert h.Range('D3').Text == '25/09/2026'
+        # Controles: el codigo con cero adelante y los textos que Excel interpretaria como en EE.UU. quedan como texto
+        assert h.Range('E2').Value2 == '007' and h.Range('E3').Value2 == 12
+        assert h.Range('F2').Value2 == '1-2' and h.Range('F3').Value2 == 'TRUE'
+        tb.execute('write_range', {'start_cell': 'H1', 'sheet': 'Control',
+                                   'values': [['Monto', 'Dia'], ['2.300,75', '01/09/2026'], ['=H2*2', '']]})
+        assert h.Range('H2').Value2 == 2300.75 and h.Range('H3').Value2 == 4601.5
+        assert h.Range('I2').Text == '01/09/2026'
+    finally:
+        sesion.adjuntos = []
+
+
 def test_outlook_contacts_pasa_el_pedido_de_todo_el_buzon(libro, monkeypatch):
     # Regresion: el aviso de 'se miraron los 1200 mas recientes' ofrecia revisar el buzon entero, pero la herramienta
     # no tenia como pedirlo. Outlook falso con la carpeta de Contactos vacia: tiene que caer en los correos.
