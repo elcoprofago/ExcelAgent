@@ -659,35 +659,23 @@ def ocr_imagen(ruta):
 
 
 def procesar_adjunto(ruta):
-    'Lee un adjunto (texto o imagen) y devuelve su contenido utilizable.'
+    """Lee un adjunto y devuelve su contenido utilizable. Los formatos estan en adjuntos.py; 'filas' es la primera
+    parte con datos (la primera hoja, la primera tabla) y 'partes' tiene todas."""
     if not os.path.isfile(ruta):
         raise ExcelError('No existe el adjunto: ' + ruta)
-    ext = os.path.splitext(ruta)[1].lower()
-    imagenes = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp', '.gif')
-    clase = 'imagen' if ext in imagenes else 'texto'
-    texto = ocr_imagen(ruta) if clase == 'imagen' else leer_texto(ruta)
-    filas = partir_filas(texto)
-    if ext == '.vcf':
-        # Agenda del telefono exportada (es la de WhatsApp): una fila por contacto.
-        import contactos
-        filas, clase = contactos.filas_de_vcard(texto), 'contactos'
-        texto = NL.join(chr(9).join(f) for f in filas)
-    elif ext in ('.csv', '.tsv'):
-        import contactos
-        filas = contactos.filas_de_csv(texto)
-        reducidas = contactos.reducir_contactos(filas)
-        if reducidas:
-            filas, clase = reducidas, 'contactos'
-            texto = NL.join(chr(9).join(f) for f in filas)
-    columnas = 0
-    for f in filas:
-        if len(f) > columnas:
-            columnas = len(f)
+    import adjuntos
+    leido = adjuntos.leer(ruta)
+    partes = leido['partes']
+    for p in partes:
+        p['columnas'] = max([len(f) for f in p['filas']] + [0])
+    primera = next((p for p in partes if p['filas']), partes[0])
+    texto = leido['texto']
     if texto.strip():
         resumen = 'Primeras lineas:' + NL + NL.join(texto.splitlines()[:8])
     else:
         resumen = 'No se reconocio texto en el adjunto.'
-    return {'ruta': ruta, 'nombre': os.path.basename(ruta), 'clase': clase, 'texto': texto, 'filas': filas, 'columnas': columnas, 'resumen': resumen}
+    return {'ruta': ruta, 'nombre': os.path.basename(ruta), 'clase': leido['clase'], 'texto': texto,
+            'filas': primera['filas'], 'columnas': primera['columnas'], 'partes': partes, 'resumen': resumen}
 
 
 def op_crear_tabla(s, ref=None):

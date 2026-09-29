@@ -51,7 +51,7 @@ La configuracion vive en `%APPDATA%\ExcelAgent\config.json` (o en la carpeta que
 ## Interfaz
 
 - **Abrir Excel**: elige el libro. Si ya estaba abierto en tu Excel, se trabaja sobre esa misma ventana.
-- **+**: adjunta un archivo (texto, csv, contactos .vcf, imagen) para que el asistente lo lea o lo vuelque en la hoja.
+- **+**: adjunta un archivo para que el asistente lo lea o lo vuelque en la hoja (formatos: ver *Adjuntos*).
 - **Modelo** y **Esfuerzo**: selector del modelo (DeepSeek o locales encontrados) y del nivel de razonamiento.
 - **Medidor**: que esta haciendo (pensando, razonando, trabajando en Excel, esperando permiso), una barra con los
   tokens del dia contra el presupuesto, el detalle de entrada (con cache), salida (con razonamiento) y la
@@ -88,6 +88,18 @@ ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moned
 - Si la carpeta de Contactos esta vacia, junta remitentes y destinatarios de la Bandeja de entrada y de Elementos
   enviados: por defecto los 1200 correos mas recientes de cada carpeta (unos 2 minutos). Pidiendo "todos",
   recorre el buzon completo; medido: unos 16 minutos con 20.000 correos.
+
+## Adjuntos
+
+Lo que se puede adjuntar con **+** (`adjuntos.py`):
+
+- Planillas: `.xlsx`, `.xlsm`, `.ods` (OpenOffice/LibreOffice), `.csv`, `.tsv`; todas las hojas, con numeros y
+  fechas conservados. `.xls` y `.xlsb` se abren con Excel, en una instancia aparte que se cierra al terminar.
+- Documentos: `.docx`, `.odt`, `.md` (sus tablas se pegan como tablas; sin tablas, el texto linea por linea).
+  `.doc` y `.rtf` necesitan Word instalado (se convierten a `.docx` en una instancia aparte); sin Word, el
+  asistente pide guardarlos como `.docx` u `.odt`.
+- Textos (`.txt`, `.log`, `.json`, `.xml`, `.html`), contactos (`.vcf`) e imagenes (por OCR).
+- PDF no: no hay con que leerlo sin sumar una biblioteca.
 
 ## Contactos del telefono (y de WhatsApp)
 
@@ -161,10 +173,11 @@ linea (antes, una linea por cada pieza del texto).
     agente.py         Bucle modelo -> herramientas -> modelo, con freno ante repeticiones
     prompts.py        Instrucciones del asesor
     herramientas.py   Las herramientas que el modelo puede usar sobre Excel
-    excel.py          Sesion COM con Excel, respaldos, adjuntos, OCR, Outlook
+    excel.py          Sesion COM con Excel, respaldos, OCR, Outlook
     dsapi.py          API de DeepSeek y configuracion
     localmodels.py    Modelos .gguf con llama-server
     meter.py          Medidor de tokens
+    adjuntos.py       Lee lo adjuntado con +: planillas, documentos, textos, imagenes
     contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)

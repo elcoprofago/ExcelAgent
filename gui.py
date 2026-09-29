@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+import adjuntos
 import asistente
 import dialogos
 import dsapi
@@ -56,8 +57,9 @@ AYUDA = """Soy tu asesor de Excel. Pedime las cosas como te salgan, por ejemplo:
 - "armame un grafico de las ventas por mes"
 - "como hago para que la primera fila quede fija?"
 
-Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas un texto, una
-imagen o los contactos exportados del telefono (.vcf) para volcar en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
+Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas otra planilla
+(Excel, OpenOffice, csv), un documento (Word, OpenOffice, .md), una imagen o los contactos exportados del telefono
+(.vcf) para leerlos o volcarlos en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
 
 Arriba elegis el modelo: los de DeepSeek necesitan la API key (Configuracion); los [local] corren en esta PC, sin internet,
 pero son mas lentos. El esfuerzo es cuanto piensa antes de contestar: mas esfuerzo, mejores respuestas y mas tokens.
@@ -430,10 +432,8 @@ class Ventana:
         self.peticiones.put(('abrir', self.ruta))
 
     def _adjuntar(self):
-        tipos = [('Textos, contactos o imagenes', '*.txt *.csv *.tsv *.log *.md *.vcf *.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'),
-                 ('Contactos (agenda del telefono)', '*.vcf *.csv'), ('Textos', '*.txt *.csv *.tsv *.log *.md'),
-                 ('Imagenes', '*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'), ('Todos los archivos', '*.*')]
-        rutas = filedialog.askopenfilenames(title='Adjuntar textos, contactos o imagenes', filetypes=tipos)
+        rutas = filedialog.askopenfilenames(title='Adjuntar planillas, documentos, textos, contactos o imagenes',
+                                            filetypes=adjuntos.TIPOS_DIALOGO)
         if not rutas:
             self.bus.log('No se adjunto ningun archivo.', 'warn')
             return

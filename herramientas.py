@@ -3,6 +3,7 @@
 #
 # Todo corre en el hilo de trabajo, el mismo que abrio la conexion COM: cruzar objetos COM entre hilos los invalida.
 # Las descripciones van en ingles (los modelos las siguen mejor); los mensajes al usuario los escribe el modelo.
+import datetime
 import inspect
 import json
 import os
@@ -14,6 +15,7 @@ MAX_READ_CELLS = 2000
 MAX_TEXT_CELLS = 400        # leer .Text es una llamada COM por celda
 MAX_WRITE_CELLS = 20000
 MAX_ATTACHMENT_CHARS = 8000
+MAX_DATE_FORMATS = 2000     # al pegar, el formato de fecha se pone celda por celda
 MAX_FIND_HITS = 50
 
 # Los errores de celda llegan por Value2 como estos enteros (CVErr).
@@ -106,6 +108,15 @@ def set_number_format(r, code):
     import pythoncom
     ole = r._oleobj_
     ole.Invoke(ole.GetIDsOfNames('NumberFormat'), 1033, pythoncom.DISPATCH_PROPERTYPUT, 0, code)
+
+
+def serial(v):
+    'Fecha u hora de Python como numero de serie de Excel (dias desde el 30/12/1899).'
+    if isinstance(v, datetime.time):
+        return (v.hour * 3600 + v.minute * 60 + v.second) / 86400
+    if not isinstance(v, datetime.datetime):
+        v = datetime.datetime(v.year, v.month, v.day)
+    return (v.replace(tzinfo=None) - datetime.datetime(1899, 12, 30)).total_seconds() / 86400
 
 
 def keep_text(v):
@@ -716,37 +727,93 @@ class ToolBox:
             raise ToolError(f'index must be 1..{len(self.s.adjuntos)}')
         return self.s.adjuntos[i - 1]
 
+    def _part(self, a, source):
+        'La parte del adjunto a pegar (hoja, tabla): por nombre o numero; sin source, la primera con datos.'
+        partes = a.get('partes') or [{'nombre': 'Texto', 'filas': a['filas'], 'columnas': a['columnas']}]
+        if source in (None, ''):
+            return next((p for p in partes if p['filas']), partes[0])
+        src = str(source).strip()
+        if src.isdigit() and 1 <= int(src) <= len(partes):
+            return partes[int(src) - 1]
+        for p in partes:
+            if p['nombre'].lower() == src.lower():
+                return p
+        raise ToolError(f"no part '{src}' in {a['nombre']}. Parts: "
+                        + ', '.join(f"{i}. {p['nombre']}" for i, p in enumerate(partes, 1)))
+
     def tool_read_attachment(self, index=None):
         a = self._attachment(index)
         text = a['texto']
         cut = f'\n[truncated: {len(text)} characters in total]' if len(text) > MAX_ATTACHMENT_CHARS else ''
-        kind = {'imagen': 'image, text read by OCR', 'contactos': 'contact list, one row per contact'}.get(a['clase'], 'text file')
-        return (f"{a['nombre']} ({kind}); "
-                f"detected {len(a['filas'])} rows x {a['columnas']} columns.\n{text[:MAX_ATTACHMENT_CHARS]}{cut}")
+        kind = {'imagen': 'image, text read by OCR', 'contactos': 'contact list, one row per contact',
+                'planilla': 'spreadsheet', 'documento': 'document'}.get(a['clase'], 'text file')
+        partes = a.get('partes') or []
+        listado = ''
+        if len(partes) > 1:
+            listado = ('Parts (paste_attachment takes one by name or number in source): '
+                       + '; '.join(f"{i}. {p['nombre']} ({len(p['filas'])} rows x {p['columnas']} columns)"
+                                   for i, p in enumerate(partes, 1)) + '\n')
+        return (f"{a['nombre']} ({kind}); detected {len(a['filas'])} rows x {a['columnas']} columns.\n"
+                f"{listado}{text[:MAX_ATTACHMENT_CHARS]}{cut}")
 
-    def tool_paste_attachment(self, start_cell='A1', index=None, sheet=None):
+    def tool_paste_attachment(self, start_cell='A1', index=None, sheet=None, source=None):
         a = self._attachment(index)
-        if not a['filas']:
+        parte = self._part(a, source)
+        filas = parte['filas']
+        if not filas:
             raise ToolError('the attachment has no usable text')
         h = self._sheet(sheet)
-        width = a['columnas']
+        width = max(1, parte['columnas'])
+        if len(filas) * width > MAX_WRITE_CELLS:
+            raise ToolError(f'{len(filas)} rows x {width} columns is more than {MAX_WRITE_CELLS} cells; '
+                            'ask the user to open that file in Excel instead')
         start = self._range(h, start_cell).Cells(1, 1)
-        target = h.Range(start, h.Cells(start.Row + len(a['filas']) - 1, start.Column + width - 1))
+        target = h.Range(start, h.Cells(start.Row + len(filas) - 1, start.Column + width - 1))
         n, sample = self._filled(target)
         if n and not self._ask('edit', f'Pisar {n} celda(s) con datos en {addr(target)}',
                                f"Con el contenido de {a['nombre']}. Hoy tienen, entre otras: " + ', '.join(sample)):
             return self._denied(f'overwriting {n} non-empty cell(s) in {addr(target)}')
         # Telefonos como texto: si no, Excel les saca el '+' y los ceros, los muestra como 5,49116E+12, o toma
         # '+54 9 11 ...' por formula. Por el encabezado de la columna o por la forma del valor.
+        # Las planillas traen valores con tipo: los numeros pasan tal cual y las fechas como numero de serie (Value2
+        # no acepta fechas), con el formato de fecha puesto despues.
         import contactos
-        tel = [contactos.es_columna_telefono(h) for h in a['filas'][0]] + [False] * width
-        def cell(i, v):
+        tel = [contactos.es_columna_telefono(t) for t in filas[0]] + [False] * width
+        fechas = []
+
+        def cell(r, i, v):
+            if v is None:
+                return ''
+            if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+                fechas.append((r, i, v))
+                return serial(v)
+            if not isinstance(v, str):
+                if r and tel[i] and isinstance(v, int) and not isinstance(v, bool):
+                    return "'" + str(v)
+                return v
             if tel[i] or contactos.parece_telefono(v):
-                return "'" + v if str(v).strip() else v
+                return "'" + v if v.strip() else v
             return keep_text(excel.valor_celda(v))
-        data = tuple(tuple([cell(i, v) for i, v in enumerate(f)] + [''] * (width - len(f))) for f in a['filas'])
+        data = tuple(tuple([cell(r, i, v) for i, v in enumerate(f)] + [''] * (width - len(f)))
+                     for r, f in enumerate(filas))
         target.Value2 = data
-        return f"Pasted {a['nombre']} into '{h.Name}'!{addr(target)}.\n" + self._preview(target)
+        for r, i, v in fechas[:MAX_DATE_FORMATS]:
+            if isinstance(v, datetime.time):
+                codigo = 'hh:mm'
+            elif isinstance(v, datetime.datetime) and v.time() != datetime.time():
+                codigo = 'dd/mm/yyyy hh:mm'
+            else:
+                codigo = 'dd/mm/yyyy'
+            set_number_format(target.Cells(r + 1, i + 1), codigo)
+        extra = ''
+        if len(fechas) > MAX_DATE_FORMATS:
+            extra += (f'\n{len(fechas) - MAX_DATE_FORMATS} more date cells were left as numbers without a date format: '
+                      'give them one with format_range.')
+        otras = [p['nombre'] for p in a.get('partes') or [] if p is not parte and p['filas']]
+        if otras:
+            extra += f"\nOther parts of the attachment, not pasted: {', '.join(otras)} (paste them with source)."
+        return (f"Pasted {a['nombre']} ({parte['nombre']}) into '{h.Name}'!{addr(target)}.\n"
+                + self._preview(target) + extra)
 
     def tool_outlook_contacts(self, with_table=False, whole_mailbox=False):
         h = self._sheet()
@@ -846,12 +913,16 @@ SPECS = [
         {'path': {'type': 'string', 'description': 'Default: next to the workbook'}, 'sheet': _SHEET}, []),
     _fn('excel_window', 'Show the Excel window to the user, or minimize it.',
         {'action': {'type': 'string', 'enum': ['show', 'minimize']}}, []),
-    _fn('read_attachment', "Read a file the user attached with the '+' button (text or CSV file, contacts exported as "
-        'vCard .vcf or CSV, or an image such as a screenshot, read by OCR).',
+    _fn('read_attachment', "Read a file the user attached with the '+' button: text, Markdown or CSV; a spreadsheet "
+        '(Excel or OpenOffice, every sheet); a document (Word, OpenOffice or RTF, its tables apart); contacts exported '
+        'as vCard .vcf or CSV; or an image such as a screenshot, read by OCR.',
         {'index': {'type': 'integer', 'description': 'Attachment number; default the last one'}}, []),
-    _fn('paste_attachment', 'Paste the rows of an attachment into the sheet (split by tab, ; or ,). Contacts come as '
-        'Nombre, Telefono, Otros telefonos, Correo; phone numbers are kept as text.',
-        {'start_cell': {'type': 'string'}, 'index': {'type': 'integer'}, 'sheet': _SHEET}, []),
+    _fn('paste_attachment', 'Paste the rows of an attachment into the sheet: one sheet of a spreadsheet, one table of a '
+        'document, or the lines of a text split by tab, ; or ,. Numbers and dates of spreadsheets are kept. Contacts '
+        'come as Nombre, Telefono, Otros telefonos, Correo; phone numbers are kept as text.',
+        {'start_cell': {'type': 'string'}, 'index': {'type': 'integer'}, 'sheet': _SHEET,
+         'source': {'type': 'string', 'description': 'Which part of the attachment (sheet name, or its number as '
+                    'read_attachment lists them); default the first one with data'}}, []),
     _fn('outlook_contacts', "Bring the contacts from the user's Outlook into the active sheet from A1 (if the "
         'Contacts folder is empty, collects senders from Inbox and Sent). Can take minutes.',
         {'with_table': {'type': 'boolean', 'description': 'Also turn them into a table'},

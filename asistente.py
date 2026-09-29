@@ -67,8 +67,10 @@ class Asistente:
     def adjuntar(self, ruta):
         info = excel.procesar_adjunto(ruta)
         self.sesion.adjuntos.append(info)
+        partes = info.get('partes') or []
+        otras = f", en {len(partes)} partes: " + ', '.join(p['nombre'] for p in partes) if len(partes) > 1 else ''
         self.bus.log(f"Adjunto {len(self.sesion.adjuntos)}: {info['nombre']} ({info['clase']}, "
-                     f"{len(info['filas'])} fila(s))", 'ok')
+                     f"{len(info['filas'])} fila(s){otras})", 'ok')
         self.bus.chat(f"Recibi el adjunto {info['nombre']}. Decime que hago con el (por ejemplo, pasarlo a una hoja).")
         return info
 

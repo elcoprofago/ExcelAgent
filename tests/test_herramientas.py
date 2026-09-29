@@ -356,6 +356,35 @@ def test_contactos_del_telefono_se_pegan_con_los_numeros_intactos(libro, sesion,
         sesion.adjuntos = []
 
 
+def test_planilla_adjunta_pega_la_hoja_pedida_con_fechas_y_numeros(libro, sesion, tmp_path):
+    # Value2 no acepta fechas: van como numero de serie y despues se les pone formato de fecha. Sin eso se veia 46266.
+    import datetime
+    tb, _, _ = libro()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Ventas'
+    ws.append(['Fecha', 'Monto', 'Telefono'])
+    ws.append([datetime.date(2026, 9, 1), 1500.5, 5491155551234])
+    wb.create_sheet('Clientes').append(['Ana', '007'])
+    wb.save(tmp_path / 'ventas.xlsx')
+    try:
+        sesion.adjuntos = [excel.procesar_adjunto(str(tmp_path / 'ventas.xlsx'))]
+        leido = tb.execute('read_attachment', {})
+        assert 'spreadsheet' in leido and '1. Ventas' in leido and '2. Clientes' in leido
+        res = tb.execute('paste_attachment', {'start_cell': 'A1', 'sheet': 'Control'})
+        assert 'Clientes' in res          # avisa que quedo otra hoja sin pegar
+        h = sesion.wb.Worksheets('Control')
+        assert h.Range('A2').Value2 == 46266
+        assert h.Range('A2').Text == '01/09/2026'
+        assert h.Range('B2').Value2 == 1500.5
+        assert h.Range('C2').Value2 == '5491155551234'      # columna Telefono: texto
+        tb.execute('paste_attachment', {'start_cell': 'A1', 'sheet': 'Datos', 'source': 'clientes'})
+        assert sesion.wb.Worksheets('Datos').Range('B1').Value2 == '007'
+        assert 'Parts: 1. Ventas, 2. Clientes' in tb.execute('paste_attachment', {'source': 'Compras'})
+    finally:
+        sesion.adjuntos = []
+
+
 def test_outlook_contacts_pasa_el_pedido_de_todo_el_buzon(libro, monkeypatch):
     # Regresion: el aviso de 'se miraron los 1200 mas recientes' ofrecia revisar el buzon entero, pero la herramienta
     # no tenia como pedirlo. Outlook falso con la carpeta de Contactos vacia: tiene que caer en los correos.
