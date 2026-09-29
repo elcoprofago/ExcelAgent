@@ -789,7 +789,7 @@ class ToolBox:
 
     def _attachment(self, index):
         if not self.s.adjuntos:
-            raise ToolError("no attachments loaded. The user can add one with the '+' button")
+            raise ToolError("no attachments loaded. The user can add one with the clip button, above Enviar")
         i = len(self.s.adjuntos) if index is None else int(index)
         if not 1 <= i <= len(self.s.adjuntos):
             raise ToolError(f'index must be 1..{len(self.s.adjuntos)}')
@@ -978,7 +978,7 @@ SPECS = [
         {'path': {'type': 'string', 'description': 'Default: next to the workbook'}, 'sheet': _SHEET}, []),
     _fn('excel_window', 'Show the Excel window to the user, or minimize it.',
         {'action': {'type': 'string', 'enum': ['show', 'minimize']}}, []),
-    _fn('read_attachment', "Read a file the user attached with the '+' button: text, Markdown or CSV; a spreadsheet "
+    _fn('read_attachment', "Read a file the user attached with the clip button: text, Markdown or CSV; a spreadsheet "
         '(Excel or OpenOffice, every sheet); a document (Word, PDF, OpenOffice or RTF, its tables apart); contacts exported '
         'as vCard .vcf or CSV; or an image such as a screenshot, read by OCR.',
         {'index': {'type': 'integer', 'description': 'Attachment number; default the last one'}}, []),

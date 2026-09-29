@@ -1,4 +1,4 @@
-# Lectura de los archivos que el usuario adjunta con el boton '+'. Cada formato se convierte en texto (para que el
+# Lectura de los archivos que el usuario adjunta con el boton del clip. Cada formato se convierte en texto (para que el
 # modelo lo lea) y en una o mas "partes" con filas y columnas (para pegarlas en la hoja): las hojas de un libro, las
 # tablas de un documento. Sin bibliotecas nuevas: .docx, .odt y .ods son zip con XML; .xlsx va con openpyxl.
 # Los formatos viejos (.xls, .xlsb, .doc, .rtf) se abren con Excel o Word por COM, siempre en una instancia propia que
@@ -23,7 +23,7 @@ DOCUMENTOS = ('.docx', '.docm', '.odt', '.doc', '.rtf', '.pdf')
 CONTACTOS = ('.vcf',)
 ACEPTADOS = IMAGENES + TEXTOS + PLANILLAS + DOCUMENTOS + CONTACTOS
 
-# Para el cuadro de dialogo del boton '+'.
+# Para el cuadro de dialogo del boton del clip.
 TIPOS_DIALOGO = [
     ('Todos los que entiendo', ' '.join('*' + e for e in ACEPTADOS)),
     ('Planillas (Excel, OpenOffice)', '*.xlsx *.xlsm *.xls *.xlsb *.ods *.csv *.tsv'),

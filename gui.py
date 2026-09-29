@@ -37,6 +37,7 @@ COLOR_APAGADO = '#5B7FA6'
 CARPETA_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
 IMG_ENVIAR = os.path.join(CARPETA_ASSETS, 'b-env.png')
 IMG_DETENER = os.path.join(CARPETA_ASSETS, 'b-stop.png')
+IMG_CLIP = os.path.join(CARPETA_ASSETS, 'b-clip.png')
 PISTA_TEXTO = 'Enter envia - Shift+Enter baja de linea - contale con tus palabras que queres hacer'
 ALTO_ENTRADA = 3
 ALTO_ENTRADA_MAX = 10
@@ -57,7 +58,7 @@ AYUDA = """Soy tu asesor de Excel. Pedime las cosas como te salgan, por ejemplo:
 - "armame un grafico de las ventas por mes"
 - "como hago para que la primera fila quede fija?"
 
-Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con + me pasas otra planilla
+Para trabajar sobre un archivo, elegilo con Abrir Excel (hago una copia de respaldo al abrirlo). Con el clip (arriba de Enviar) me pasas otra planilla
 (Excel, OpenOffice, csv), un documento (Word, PDF, OpenOffice, .md), una imagen o los contactos exportados del telefono
 (.vcf) para leerlos o volcarlos en la planilla. Antes de pisar datos, borrar o guardar te pido permiso. No guardo el archivo si no me lo pedis.
 
@@ -111,6 +112,8 @@ class Ventana:
         self._display_a_id = {}
         self.img_enviar = None
         self.img_detener = None
+        self.img_clip = None
+        self.saldo_inicial = None       # (numero, texto) de la primera consulta: para mostrar lo gastado en la sesion
         self.trabajando_antes = False
         self.cerrando = False
         self.tarea_after = None
@@ -190,27 +193,30 @@ class Ventana:
         barra = tk.Frame(self.raiz, bg=FONDO_APP, padx=10, pady=8)
         barra.pack(fill='x')
         tk.Button(barra, text='Abrir Excel', width=13, bg=FONDO_BOTON, command=self._elegir).pack(side='left')
+        # Lo de la derecha se empaqueta antes que la caja del archivo: con la ventana angosta se achica la caja y el
+        # saldo sigue entero (en la fila del modelo quedaba cortado).
+        tk.Button(barra, text='⟳', width=3, bg=FONDO_BOTON, command=lambda: self._refrescar_saldo(manual=True)).pack(side='right')
+        tk.Label(barra, textvariable=self.saldo_var, bg=FONDO_APP, fg=COLOR_TITULO).pack(side='right', padx=(10, 4))
+        tk.Button(barra, text='Reconectar', width=11, bg=FONDO_BOTON, command=self._reiniciar_conexion).pack(side='right', padx=(8, 0))
+        tk.Button(barra, text='Ayuda', width=8, bg=FONDO_BOTON, command=self._ayuda).pack(side='right', padx=(10, 0))
         caja = tk.Entry(barra, textvariable=self.ruta_var, state='readonly')
         caja.pack(side='left', fill='x', expand=True, padx=(10, 0))
-        tk.Button(barra, text='+', width=3, bg=FONDO_BOTON, command=self._adjuntar).pack(side='left', padx=(10, 0))
-        tk.Button(barra, text='Ayuda', width=8, bg=FONDO_BOTON, command=self._ayuda).pack(side='left', padx=(8, 0))
-        tk.Button(barra, text='Reconectar', width=11, bg=FONDO_BOTON, command=self._reiniciar_conexion).pack(side='left', padx=(8, 0))
 
         # segunda barra: con que modelo se trabaja y cuanto piensa
         modelos = tk.Frame(self.raiz, bg=FONDO_APP, padx=10)
         modelos.pack(fill='x')
-        tk.Label(modelos, text='Modelo', bg=FONDO_APP, fg=COLOR_TITULO).pack(side='left')
-        self.modelo_cb = ttk.Combobox(modelos, textvariable=self.modelo_var, state='readonly', width=42)
-        self.modelo_cb.pack(side='left', padx=(6, 12))
-        self.modelo_cb.bind('<<ComboboxSelected>>', lambda e: self._modelo_cambiado())
-        tk.Label(modelos, text='Esfuerzo', bg=FONDO_APP, fg=COLOR_TITULO).pack(side='left')
+        # Botones y esfuerzo primero, desde la derecha: con la ventana angosta se achica el selector de modelo y no
+        # desaparece Nueva charla (antes, a 760 de ancho, quedaba fuera de la ventana).
+        tk.Button(modelos, text='Nueva charla', width=12, bg=FONDO_BOTON, command=self._nueva_charla).pack(side='right', padx=(8, 0))
+        tk.Button(modelos, text='Configuracion', width=13, bg=FONDO_BOTON, command=self._abrir_configuracion).pack(side='right')
         self.esfuerzo_cb = ttk.Combobox(modelos, textvariable=self.esfuerzo_var, state='readonly', width=14)
-        self.esfuerzo_cb.pack(side='left', padx=(6, 12))
+        self.esfuerzo_cb.pack(side='right', padx=(6, 12))
         self.esfuerzo_cb.bind('<<ComboboxSelected>>', lambda e: self._esfuerzo_cambiado())
-        tk.Button(modelos, text='Configuracion', width=13, bg=FONDO_BOTON, command=self._abrir_configuracion).pack(side='left')
-        tk.Button(modelos, text='Nueva charla', width=12, bg=FONDO_BOTON, command=self._nueva_charla).pack(side='left', padx=(8, 0))
-        tk.Button(modelos, text='⟳', width=3, bg=FONDO_BOTON, command=self._refrescar_saldo).pack(side='right')
-        tk.Label(modelos, textvariable=self.saldo_var, bg=FONDO_APP, fg=COLOR_TITULO).pack(side='right', padx=(0, 6))
+        tk.Label(modelos, text='Esfuerzo', bg=FONDO_APP, fg=COLOR_TITULO).pack(side='right')
+        tk.Label(modelos, text='Modelo', bg=FONDO_APP, fg=COLOR_TITULO).pack(side='left')
+        self.modelo_cb = ttk.Combobox(modelos, textvariable=self.modelo_var, state='readonly', width=30)
+        self.modelo_cb.pack(side='left', fill='x', expand=True, padx=(6, 12))
+        self.modelo_cb.bind('<<ComboboxSelected>>', lambda e: self._modelo_cambiado())
 
         # medidor: estado del pedido y consumo de tokens
         medidor = tk.Frame(self.raiz, bg=FONDO_APP, padx=10, pady=4)
@@ -243,13 +249,22 @@ class Ventana:
         self.entrada.bind('<Return>', self._tecla_enter)
         self.entrada.bind('<Shift-Return>', self._tecla_shift)
         self.entrada.bind('<<Modified>>', self._ajustar_alto)
-        self.boton_principal = tk.Button(envio, bd=0, relief='flat', highlightthickness=0, cursor='hand2', bg=FONDO_APP, activebackground=FONDO_APP, command=self._enviar_o_detener)
+        # Columna de botones a la derecha del cuadro: el clip (adjuntar) arriba del de enviar, donde se lo ve.
+        botones = tk.Frame(envio, bg=FONDO_APP)
+        self.boton_adjuntar = tk.Button(botones, bd=0, relief='flat', highlightthickness=0, cursor='hand2', bg=FONDO_APP, activebackground=FONDO_APP, command=self._adjuntar)
+        if self.img_clip is not None:
+            self.boton_adjuntar.configure(image=self.img_clip, text=str())
+        else:
+            self.boton_adjuntar.configure(text='Adjuntar', width=10, bg=FONDO_BOTON)
+        self.boton_adjuntar.pack(side='top', pady=(0, 4))
+        self.boton_principal = tk.Button(botones, bd=0, relief='flat', highlightthickness=0, cursor='hand2', bg=FONDO_APP, activebackground=FONDO_APP, command=self._enviar_o_detener)
         if self.img_enviar is not None:
             self.boton_principal.configure(image=self.img_enviar, text=str())
         else:
             self.boton_principal.configure(text='Enviar', width=10, bg=FONDO_BOTON)
         # El boton va primero en el empaquetado: asi conserva su ancho y no queda recortado.
-        self.boton_principal.pack(side='right', padx=(8, 0), anchor='s')
+        self.boton_principal.pack(side='top')
+        botones.pack(side='right', padx=(8, 0), anchor='s')
         marco.pack_forget()
         marco.pack(side='left', fill='both', expand=True)
         self.pista = tk.Label(izq, text=PISTA_TEXTO, bg=FONDO_APP, fg=COLOR_TITULO, anchor='w')
@@ -337,7 +352,7 @@ class Ventana:
             self.post(aplicar)
         threading.Thread(target=trabajo, daemon=True).start()
 
-    def _refrescar_saldo(self):
+    def _refrescar_saldo(self, manual=False):
         key = self.cfg.api_key
         if not key:
             self.saldo_var.set('Saldo: sin key')
@@ -347,12 +362,37 @@ class Ventana:
         def trabajo():
             try:
                 b = dsapi.get_balance(key)
-                texto = 'Saldo: ' + b['text'] + ('' if b['available'] else ' (no disponible)')
             except dsapi.ApiError as exc:
-                texto = 'Saldo: ?'
                 self.bus.log('No pude consultar el saldo: ' + str(exc), 'warn')
-            self.post(lambda: self.saldo_var.set(texto))
+                self.post(lambda: self.saldo_var.set('Saldo: ?'))
+                return
+            self.post(lambda: self._mostrar_saldo(b, manual))
         threading.Thread(target=trabajo, daemon=True).start()
+
+    def _mostrar_saldo(self, b, manual):
+        # DeepSeek informa el saldo con dos decimales y un pedido chico cuesta menos de un centavo: el numero puede
+        # quedar igual aunque se haya gastado. Por eso se muestra la hora de la consulta (se ve que el boton anduvo)
+        # y lo gastado desde la primera consulta de la sesion.
+        hora = excel.hora_actual()[:5]
+        texto = 'Saldo: ' + b['text'] + ('' if b['available'] else ' (no disponible)')
+        montos = b.get('amounts') or {}
+        gastado = None
+        if self.saldo_inicial is None:
+            if montos:
+                self.saldo_inicial = montos
+        else:
+            comunes = [m for m in montos if m in self.saldo_inicial]
+            if comunes:
+                m = comunes[0]
+                gastado = (m, max(0.0, self.saldo_inicial[m] - montos[m]))
+        if gastado is not None:
+            signo = 'US$ ' if gastado[0] == 'USD' else gastado[0] + ' '
+            texto += f' - sesion: -{signo}{gastado[1]:.2f}'
+        self.saldo_var.set(texto + f' - {hora}')
+        if manual:
+            self.bus.log(f'Saldo consultado a las {hora}: {b["text"]}. DeepSeek lo informa con dos decimales: un pedido '
+                         'chico cuesta menos de un centavo y puede no moverlo. Lo que usa cada pedido se ve al momento '
+                         'en la linea de tokens, debajo.', 'info')
 
     def _refrescar_modelos_widgets(self):
         a = self.agente
@@ -780,15 +820,18 @@ class Ventana:
         self.log.configure(state='disabled')
 
     def _cargar_iconos(self):
-        # Iconos de enviar y detener, en la carpeta assets.
+        # Iconos de enviar, detener y adjuntar, en la carpeta assets.
         try:
             if os.path.isfile(IMG_ENVIAR):
                 self.img_enviar = tk.PhotoImage(file=IMG_ENVIAR)
             if os.path.isfile(IMG_DETENER):
                 self.img_detener = tk.PhotoImage(file=IMG_DETENER)
+            if os.path.isfile(IMG_CLIP):
+                self.img_clip = tk.PhotoImage(file=IMG_CLIP)
         except Exception as exc:
             self.img_enviar = None
             self.img_detener = None
+            self.img_clip = None
             self._error_interno('No pude cargar los iconos: ' + str(exc), 'warn')
 
     def _enviar_o_detener(self):

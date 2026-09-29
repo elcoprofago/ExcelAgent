@@ -70,20 +70,30 @@ def test_texto_enriquecido_en_el_registro():
 
 
 
-def test_boton_adjuntar_presente():
+def test_clip_arriba_de_enviar():
+    # Pedido del usuario (29/09/2026): el '+' de la barra de arriba costaba verlo; ahora es un clip sobre Enviar.
     v = gui.Ventana()
     try:
-        encontrados = []
-        def recorrer(w):
+        for k in range(8):
+            v.raiz.update()
+            gui.time.sleep(0.05)
+        c, b = v.boton_adjuntar, v.boton_principal
+        assert c.winfo_ismapped() and str(c.cget('image'))          # con el icono, no con texto
+        assert c.winfo_rooty() + c.winfo_height() <= b.winfo_rooty()  # arriba de Enviar
+        assert abs(c.winfo_rootx() - b.winfo_rootx()) <= 4          # en la misma columna
+        # Control: ya no queda un '+' en la barra de arriba.
+        def textos(w):
             for h in w.winfo_children():
                 try:
-                    if h.cget('text') == '+':
-                        encontrados.append(h)
+                    yield h.cget('text')
                 except Exception:
                     pass
-                recorrer(h)
-        recorrer(v.raiz)
-        assert encontrados
+                yield from textos(h)
+        assert '+' not in list(textos(v.raiz))
+        c.configure(command=lambda: v.bus.log('marca clip', 'ok'))
+        c.invoke()
+        v._procesar_eventos()
+        assert 'marca clip' in v.log.get('1.0', 'end')
     finally:
         v.raiz.destroy()
 
@@ -170,13 +180,30 @@ def test_boton_visible_con_la_ventana_comprimida():
         for k in range(12):
             v.raiz.update()
             gui.time.sleep(0.05)
-        b = v.boton_principal
         alto_ventana = v.raiz.winfo_height()
-        y = b.winfo_rooty() - v.raiz.winfo_rooty()
-        assert b.winfo_ismapped()
-        assert b.winfo_width() > 10
-        assert b.winfo_height() > 10
-        assert (y + b.winfo_height()) <= alto_ventana
+        for b in (v.boton_principal, v.boton_adjuntar):
+            y = b.winfo_rooty() - v.raiz.winfo_rooty()
+            assert b.winfo_ismapped()
+            assert b.winfo_width() > 10
+            assert b.winfo_height() > 10
+            assert y >= 0 and (y + b.winfo_height()) <= alto_ventana
+        # Regresion: a 760 de ancho Nueva charla quedaba afuera y el saldo, cortado.
+        v.saldo_var.set('Saldo: US$ 5.91 - sesion: -US$ 0.02 - 19:00')
+        v.raiz.update()
+        ancho = v.raiz.winfo_width()
+        def todos(w):
+            for h in w.winfo_children():
+                yield h
+                yield from todos(h)
+        for w in todos(v.raiz):
+            try:
+                t = w.cget('text') or str(w.cget('textvariable'))
+            except Exception:
+                continue
+            if t in ('Nueva charla', 'Configuracion', '⟳', str(v.saldo_var)):
+                x = w.winfo_rootx() - v.raiz.winfo_rootx()
+                assert w.winfo_ismapped() and x >= 0 and x + w.winfo_width() <= ancho, t
+                assert w.winfo_width() >= w.winfo_reqwidth(), t      # entero, no recortado
     finally:
         v.raiz.destroy()
 
@@ -309,3 +336,27 @@ def test_selector_de_modelo_y_esfuerzo():
 def test_formato_de_miles():
     assert gui.miles(1234567) == '1.234.567'
     assert gui.miles(0) == '0'
+
+
+def test_saldo_muestra_la_hora_y_lo_gastado_en_la_sesion(monkeypatch):
+    # El saldo llega con dos decimales: con pedidos chicos el numero no cambia y el boton parecia no andar.
+    saldos = iter(['5.93', '5.93', '5.91'])
+    def falso(key):
+        t = next(saldos)
+        return {'available': True, 'text': 'US$ ' + t, 'amounts': {'USD': float(t)}}
+    monkeypatch.setattr(gui.dsapi, 'get_balance', falso)
+    v = gui.Ventana()
+    monkeypatch.setattr(type(v.cfg), 'api_key', property(lambda self: 'k-falsa'))
+    try:
+        v._refrescar_saldo()
+        assert esperar(v, lambda: v.saldo_var.get() != 'Saldo: ...')
+        assert v.saldo_var.get().startswith('Saldo: US$ 5.93 - ') and 'sesion' not in v.saldo_var.get()
+        v._refrescar_saldo(manual=True)
+        assert esperar(v, lambda: v.saldo_var.get() != 'Saldo: ...')
+        assert 'sesion: -US$ 0.00' in v.saldo_var.get()
+        assert 'dos decimales' in v.log.get('1.0', 'end')           # el boton deja constancia de que consulto
+        v._refrescar_saldo()
+        assert esperar(v, lambda: v.saldo_var.get() != 'Saldo: ...')
+        assert 'sesion: -US$ 0.02' in v.saldo_var.get()
+    finally:
+        v.raiz.destroy()

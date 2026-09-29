@@ -117,14 +117,20 @@ def list_models(key):
 
 
 def get_balance(key):
-    """Devuelve {'available': bool, 'text': 'US$ 5.93'}. El saldo es prepago (no hay plan)."""
+    """Devuelve {'available': bool, 'text': 'US$ 5.93', 'amounts': {'USD': 5.93}}. El saldo es prepago (no hay plan).
+    'amounts' tiene solo las monedas con un numero legible: sirve para restar contra una consulta anterior."""
     data = _get_json("/user/balance", key)
     infos = data.get("balance_infos") or []
     parts = []
+    amounts = {}
     for b in infos:
         cur, tot = b.get("currency", ""), b.get("total_balance", "?")
         parts.append(f"US$ {tot}" if cur == "USD" else f"{tot} {cur}")
-    return {"available": bool(data.get("is_available")), "text": " + ".join(parts) or "sin datos"}
+        try:
+            amounts[cur] = float(tot)
+        except (TypeError, ValueError):
+            pass
+    return {"available": bool(data.get("is_available")), "text": " + ".join(parts) or "sin datos", "amounts": amounts}
 
 
 # ---------------------------------------------------------------- chat en streaming

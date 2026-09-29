@@ -51,11 +51,13 @@ La configuracion vive en `%APPDATA%\ExcelAgent\config.json` (o en la carpeta que
 ## Interfaz
 
 - **Abrir Excel**: elige el libro. Si ya estaba abierto en tu Excel, se trabaja sobre esa misma ventana.
-- **+**: adjunta un archivo para que el asistente lo lea o lo vuelque en la hoja (formatos: ver *Adjuntos*).
+- **Clip** (arriba de Enviar, junto al cuadro de mensaje): adjunta un archivo para que el asistente lo lea o lo vuelque en la hoja (formatos: ver *Adjuntos*).
 - **Modelo** y **Esfuerzo**: selector del modelo (DeepSeek o locales encontrados) y del nivel de razonamiento.
 - **Medidor**: que esta haciendo (pensando, razonando, trabajando en Excel, esperando permiso), una barra con los
   tokens del dia contra el presupuesto, el detalle de entrada (con cache), salida (con razonamiento) y la
-  velocidad en tok/s. El boton ⟳ consulta el saldo de la cuenta de DeepSeek.
+  velocidad en tok/s. El boton ⟳ consulta el saldo de la cuenta de DeepSeek y muestra la hora de la consulta y lo
+  gastado desde la primera de la sesion. DeepSeek informa el saldo con dos decimales: un pedido chico cuesta menos
+  de un centavo y puede no moverlo; el consumo de cada pedido se ve en la linea de tokens.
 - **Nueva charla**: olvida la conversacion (el libro queda como esta).
 - **Enviar / Detener**: Detener corta el trabajo en curso, incluido un recorrido largo de Outlook.
 - **Reconectar**: vuelve a buscar el Excel abierto (ver "Si Excel no responde").
@@ -91,7 +93,7 @@ ingles; esto se corrigio el 29/09/2026: antes, en un Excel en castellano, "moned
 
 ## Adjuntos
 
-Lo que se puede adjuntar con **+** (`adjuntos.py`):
+Lo que se puede adjuntar con el **clip** (`adjuntos.py`):
 
 - Planillas: `.xlsx`, `.xlsm`, `.ods` (OpenOffice/LibreOffice), `.csv`, `.tsv`; todas las hojas, con numeros y
   fechas conservados. `.xls` y `.xlsb` se abren con Excel, en una instancia aparte que se cierra al terminar.
@@ -109,13 +111,13 @@ Lo que se puede adjuntar con **+** (`adjuntos.py`):
 ## Contactos del telefono (y de WhatsApp)
 
 - WhatsApp no tiene agenda propia: usa la del telefono. ExcelAgent no lee WhatsApp Web (automatizarlo va contra las
-  condiciones de uso de WhatsApp y arriesga la cuenta); la via es exportar la agenda y adjuntarla con **+**.
+  condiciones de uso de WhatsApp y arriesga la cuenta); la via es exportar la agenda y adjuntarla con el **clip**.
 - Formatos: vCard (`.vcf`, lo que exporta la app Contactos de Android o icloud.com) y CSV de contactos (Google
   Contactos, Outlook). Se reducen a Nombre, Telefono, Otros telefonos y Correo (`contactos.py`).
 - Los telefonos se escriben como texto: sin eso Excel les sacaba el `+`, los mostraba como `5,49114E+12` o tomaba
   `+54 9 11 ...` por una formula. Vale para toda columna cuyo encabezado diga telefono, celular, movil, phone o
   WhatsApp, y para todo valor con forma de telefono.
-- Para pocos contactos alcanza una captura de la lista adjuntada con **+** (OCR: conviene revisar los numeros).
+- Para pocos contactos alcanza una captura de la lista adjuntada con el **clip** (OCR: conviene revisar los numeros).
 
 ## Lectura de texto en imagenes
 
@@ -182,7 +184,7 @@ linea (antes, una linea por cada pieza del texto).
     dsapi.py          API de DeepSeek y configuracion
     localmodels.py    Modelos .gguf con llama-server
     meter.py          Medidor de tokens
-    adjuntos.py       Lee lo adjuntado con +: planillas, documentos, PDF, textos, imagenes
+    adjuntos.py       Lee lo adjuntado con el clip: planillas, documentos, PDF, textos, imagenes
     numeros.py        Numeros y fechas escritos como texto -> valores de Excel
     contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
