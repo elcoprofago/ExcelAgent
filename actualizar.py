@@ -7,8 +7,9 @@
 #      es el estado al que se vuelve;
 #   3. recien ahi se copian los archivos nuevos. Si algo falla a mitad de camino, se restaura el respaldo y se borra lo
 #      que la copia habia agregado: queda exactamente la version anterior.
-# No se tocan: logs\, la configuracion (en %APPDATA%), el entorno ..\.venv ni ..\tesseract. Tampoco se borra ningun
-# archivo que la version nueva ya no traiga: puede haberlo puesto el usuario, y un archivo de mas no rompe nada.
+# No se tocan: logs\, la configuracion (en %APPDATA%), el Python (..\python del instalador o ..\.venv) ni
+# ..\tesseract. Tampoco se borra ningun archivo que la version nueva ya no traiga: puede haberlo puesto el usuario, y un
+# archivo de mas no rompe nada.
 import json
 import os
 import re
@@ -188,7 +189,9 @@ def _chequear_git(programa, correr=subprocess.run):
 
 def instalar_dependencias(programa, python=None, correr=subprocess.run):
     python = python or sys.executable.replace('pythonw.exe', 'python.exe')
-    r = correr([python, '-m', 'pip', 'install', '-r', os.path.join(programa, 'requirements.txt')],
+    # -E -s, igual que el lanzador: ni variables PYTHON* ni las bibliotecas del usuario (%APPDATA%\Python). Si no, pip
+    # puede dar por instalada una biblioteca que esta ahi y no en el Python del programa.
+    r = correr([python, '-E', '-s', '-m', 'pip', 'install', '-r', os.path.join(programa, 'requirements.txt')],
                capture_output=True, text=True, timeout=900, creationflags=SIN_VENTANA)
     if r.returncode != 0:
         ultimas = '\n'.join((r.stderr or r.stdout or '').strip().splitlines()[-3:])
@@ -229,7 +232,8 @@ def aplicar(raiz, programa, actual, pip=instalar_dependencias, correr=subprocess
                 pip(programa)
             except Exception as exc3:
                 extra = ('\nOjo: las bibliotecas pueden haber quedado a medio cambiar. Para arreglarlo: '
-                         '..\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt (' + str(exc3)[:200] + ')')
+                         '"' + sys.executable.replace('pythonw.exe', 'python.exe') +
+                         '" -E -s -m pip install -r requirements.txt (' + str(exc3)[:200] + ')')
         raise ErrorActualizacion(f'Fallo la actualizacion: {motivo}\nVolvi a dejar la version {actual} como estaba '
                                  f'(respaldo en {respaldo}).' + extra) from None
     return respaldo

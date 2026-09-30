@@ -10,9 +10,33 @@ El modelo puede ser:
 - Un modelo local .gguf servido con llama-server, si la PC lo soporta. Funciona sin internet, pero los modelos
   chicos (medido con Qwen3-4B y Qwen3.5-9B) se equivocan seguido al usar herramientas: ver "Modelos locales".
 
+## Instalar (usuarios)
+
+`ExcelAgent-Setup-<version>.exe`: doble clic y Siguiente. No pide administrador ni necesita que la PC tenga Python:
+trae el suyo.
+
+- Instala en `%LOCALAPPDATA%\Programs\ExcelAgent`: `ExcelAgent\` (el programa), `python\` (Python 3.13 con las
+  bibliotecas ya instaladas), `tesseract\` (OCR) y un acceso directo en el menu Inicio (y en el escritorio, si se
+  deja marcado).
+- Sirve en cualquier PC y con cualquier usuario: nada queda apuntando a rutas de la PC donde se armo. Es lo que evita
+  el problema de copiar la carpeta con su `.venv` a otra PC (ver Entorno).
+- Instalarlo encima de una instalacion anterior la actualiza. Si la instalada es mas nueva (por el boton
+  Actualizar), pregunta antes de volver atras.
+- Desinstalar (Configuracion de Windows > Aplicaciones) borra el programa, su Python y tesseract, pero deja `logs\`,
+  `_versiones_anteriores\` y cualquier archivo agregado a mano. La configuracion y la API key (en %APPDATA%) no se
+  tocan, ni al instalar ni al desinstalar.
+
+Armar el instalador (PC de desarrollo; hace falta Inno Setup 6, Python 3.13 de python.org y `..\tesseract`):
+
+    .\instalador\construir.ps1
+
+Deja `..\_instalador\ExcelAgent-Setup-<VERSION>.exe`, con la version de `version.py`. Antes de compilar comprueba
+que el Python de la etapa importe las bibliotecas, compile el programa, encuentre tesseract y no tenga rutas fuera de
+la etapa; si algo no da, no arma nada. Si el repo tiene cambios sin commitear avisa, y los incluye.
+
 ## Entorno
 
-- Python 3.13 con un entorno virtual en la carpeta padre: `..\.venv` (fuera del repo, en `.gitignore`).
+- Para desarrollar: Python 3.13 con un entorno virtual en la carpeta padre: `..\.venv` (fuera del repo, en `.gitignore`).
 - Dependencias: `requirements.txt` (pywin32, openpyxl, pypdf, pytesseract, pillow, pytest). Los modulos de la API y de
   modelos locales solo usan la biblioteca estandar.
 - Excel de escritorio para Windows (probado con Microsoft 365, version 16.0.20326). Outlook solo hace falta
@@ -24,14 +48,28 @@ Crear el entorno desde cero, parado en la carpeta del repo:
     ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
 Si el entorno se copio desde otra PC, `..\.venv\pyvenv.cfg` apunta al Python de aquella (lineas `home` y
-`executable`). Corregir esas dos lineas para que apunten al Python 3.13 de esta PC alcanza; no hace falta rehacerlo.
+`executable`, con otro usuario en la ruta) y el lanzador avisa que ese Python no esta. Lo arregla
+`preparar_entorno.bat` (doble clic), que busca los Python instalados en esta PC y:
+
+- si hay uno de la misma version menor que el entorno (3.13 con 3.13), solo corrige esas dos lineas;
+- si no (la PC tiene 3.12, 3.14...), arma un entorno nuevo con el Python mas reciente e instala
+  `requirements.txt` (hace falta internet): las bibliotecas compiladas (pywin32, pillow) son de una version sola.
+
+No borra nada: el entorno anterior queda como `..\.venv.respaldo-<fecha>` (y `pyvenv.cfg.respaldo-<fecha>`), y si
+algo falla vuelve a dejarlo como estaba. Al final prueba que se importen las bibliotecas y que el codigo compile con
+ese Python. Si el entorno ya funciona, no toca nada. Probado con 3.13 y 3.14 (en 3.14 pasa `pytest`).
+
+Para usar el programa en otra PC, mejor el instalador que copiar la carpeta.
 
 ## Lanzadores
 
 - `ExcelAgent.vbs`: doble clic. Arranca sin consola. Es el recomendado.
 - `ExcelAgent.bat`: hace lo mismo, delegando en el .vbs.
-- Los dos buscan el entorno en `..\.venv` relativo a su propia carpeta: sirven igual en `D:\REPOS\EXCEL\ExcelAgent`
-  que en `F:\source\repos\EXCEL\ExcelAgent`. Si el entorno falta, lo dicen en vez de fallar callados.
+- Los dos buscan Python en la carpeta de arriba: primero `..\python` (el del instalador) y si no esta `..\.venv` (el
+  de desarrollo). Por eso sirven igual instalados que en `D:\REPOS\EXCEL\ExcelAgent` o `F:\source\repos\EXCEL\ExcelAgent`.
+- Arrancan Python con `-E -s`: no lo afectan variables `PYTHON*` ni bibliotecas instaladas por el usuario en
+  `%APPDATA%\Python`.
+- Si no hay Python, o el `.venv` apunta a un Python que no esta en esta PC, lo dicen en vez de fallar callados.
 
 ## Configuracion
 
@@ -167,9 +205,9 @@ La version va en el titulo de la ventana (`ExcelAgent 1.0.0 - asesor de Excel`) 
   1. baja el zip de la release y comprueba que sea ExcelAgent y que la version de adentro coincida con la
      etiqueta;
   2. guarda una copia entera de la version instalada en `_versiones_anteriores\<version>_<fecha>` y la verifica;
-  3. copia los archivos nuevos. Si `requirements.txt` cambio, instala las bibliotecas en `..\.venv`.
+  3. copia los archivos nuevos. Si `requirements.txt` cambio, instala las bibliotecas en el Python del programa (`..\python` o `..\.venv`).
 - Si algo falla a mitad de camino, vuelve a dejar la version anterior tal cual estaba y lo dice.
-- No toca `logs\`, la configuracion (en %APPDATA%), `..\.venv` ni `..\tesseract`.
+- No toca `logs\`, la configuracion (en %APPDATA%), `..\python`, `..\.venv` ni `..\tesseract`.
 - No borra archivos que la version nueva ya no traiga.
 - Si la carpeta es un clon de git con cambios sin commitear, no la pisa: hay que usar `git pull`.
 - Al terminar ofrece reiniciar el programa.
