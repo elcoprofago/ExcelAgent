@@ -220,8 +220,11 @@ Publicar una version nueva (desde la PC de desarrollo):
 2. correr `.\publicar.ps1 -Notas "que trae"`.
 
 El script se niega si hay cambios sin commitear, si la etiqueta ya existe o si la version no es mayor que la
-ultima publicada. Despues sube `main`, crea la etiqueta `v<VERSION>` y la release, y verifica que GitHub la
-devuelva como la ultima.
+ultima publicada. Despues arma el instalador con `instalador\construir.ps1`, antes de subir nada: si no se
+puede armar, no se publica nada. Recien ahi sube `main`, crea la etiqueta `v<VERSION>` y la release con
+`ExcelAgent-Setup-<VERSION>.exe` adjunto. Por ultimo verifica que GitHub la devuelva como la ultima, baja el
+instalador publicado y compara su SHA-256 con el armado. Si algo falla con la etiqueta ya subida, avisa
+`PUBLICADO A MEDIAS` y da el comando para completarlo.
 
 ## Pruebas
 
@@ -256,6 +259,6 @@ devuelva como la ultima.
     secret.py         Cifrado de la key con contrasena
     version.py        Numero de version (titulo de la ventana y etiqueta de la release)
     actualizar.py     Boton Actualizar: baja la ultima release de GitHub, respalda e instala
-    publicar.ps1      Publica una version como release de GitHub
+    publicar.ps1      Publica una version como release de GitHub, con el instalador adjunto
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
     tests\            Pruebas
