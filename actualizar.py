@@ -1,23 +1,29 @@
 # Boton 'Actualizar': trae la ultima release publicada en GitHub y la instala sobre la carpeta del programa.
 #
+# Lo unico que sobrevive de una version a otra son las personalizaciones del usuario: la configuracion (en %APPDATA%,
+# fuera de esta carpeta), y en esta carpeta CONSERVAR (config portable, modelos locales, llama-server, registro) y
+# cualquier archivo que no sea del programa (puesto por el usuario). Todo lo demas se reemplaza o se borra, incluido
+# .git: una copia sacada con git se actualiza igual, tenga o no cambios.
+#
 # Orden, y por que:
 #   1. se baja el zip de la release a una carpeta temporal y se valida (que sea ExcelAgent y que la version de adentro
 #      coincida con la etiqueta);
-#   2. se respalda la version instalada ENTERA en _versiones_anteriores\<version>_<fecha>, no solo lo que se va a pisar:
-#      es el estado al que se vuelve;
-#   3. recien ahi se copian los archivos nuevos. Si algo falla a mitad de camino, se restaura el respaldo y se borra lo
-#      que la copia habia agregado: queda exactamente la version anterior.
-# No se tocan: logs\, la configuracion (en %APPDATA%), el Python (..\python del instalador o ..\.venv) ni
-# ..\tesseract. Tampoco se borra ningun archivo que la version nueva ya no traiga: puede haberlo puesto el usuario, y un
-# archivo de mas no rompe nada.
+#   2. se aparta una copia de los archivos que se van a pisar (en _actualizacion_en_curso), para volver atras;
+#   3. se copian los archivos nuevos (y pip, si cambio requirements.txt). Si algo falla, se reponen los pisados y se
+#      borra lo agregado: queda exactamente la version anterior;
+#   4. instalada la nueva, se borra: la copia apartada (no es un respaldo, se borra apenas la nueva queda bien), .git,
+#      _versiones_anteriores (de las versiones que si guardaban respaldo), los __pycache__ y los archivos de la version
+#      anterior que la nueva ya no trae. Esa lista sale de GitHub (el arbol de la etiqueta de la version instalada): sin
+#      ella no se sabria si un archivo es del programa o del usuario, y en la duda no se borra.
+# El Python (..\python del instalador o ..\.venv) y ..\tesseract estan fuera de esta carpeta: no se tocan.
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -25,11 +31,14 @@ import zipfile
 import version
 
 API = 'https://api.github.com/repos/{repo}/releases/latest'
-CARPETA_RESPALDOS = '_versiones_anteriores'
-# Carpetas de primer nivel que no son del programa: ni se respaldan ni se pisan.
-NO_TOCAR = {'logs', '__pycache__', '.git', CARPETA_RESPALDOS, '_excelagent_respaldos'}
+ARBOL = 'https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1'
+EN_CURSO = '_actualizacion_en_curso'
+# Primer nivel: personalizaciones del usuario. Nunca se pisan ni se borran.
+CONSERVAR = {'logs', 'data', 'portable.flag', 'Models', 'bin'}
+# Primer nivel: lo que no es del usuario ni de la version nueva. Se borra al terminar.
+BORRAR = {'.git', '_versiones_anteriores'}
 PROGRAMA = os.path.dirname(os.path.abspath(__file__))
-SIN_VENTANA = 0x08000000        # CREATE_NO_WINDOW: pip y git sin consola que parpadee
+SIN_VENTANA = 0x08000000        # CREATE_NO_WINDOW: pip sin consola que parpadee
 
 
 class ErrorActualizacion(Exception):
@@ -128,15 +137,30 @@ def validar(raiz, rel):
 
 
 def archivos(raiz):
-    'Rutas relativas de los archivos del programa (sin logs, respaldos, .git ni __pycache__).'
+    'Rutas relativas de los archivos de una carpeta, sin CONSERVAR, BORRAR, la copia apartada ni __pycache__.'
+    afuera = CONSERVAR | BORRAR | {EN_CURSO}
     for carpeta, subcarpetas, nombres in os.walk(raiz):
         rel = os.path.relpath(carpeta, raiz)
         if rel == '.':
-            subcarpetas[:] = [d for d in subcarpetas if d not in NO_TOCAR]
+            subcarpetas[:] = [d for d in subcarpetas if d not in afuera and d != '__pycache__']
+            nombres = [n for n in nombres if n not in afuera]
         else:
             subcarpetas[:] = [d for d in subcarpetas if d != '__pycache__']
         for n in nombres:
             yield n if rel == '.' else os.path.join(rel, n)
+
+
+def archivos_de_version(etiqueta, repo=version.REPO, abrir=urllib.request.urlopen):
+    """Los archivos que trae la version 'etiqueta' segun GitHub (rutas con el separador de Windows), o None si no se
+    pudo saber: sin internet, una version sin publicar (una copia de desarrollo) o una lista truncada."""
+    try:
+        with _pedir(ARBOL.format(repo=repo, ref=etiqueta), 15, abrir) as r:
+            d = json.load(r)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    if d.get('truncated') or not isinstance(d.get('tree'), list):
+        return None
+    return {os.path.normpath(e['path']) for e in d['tree'] if e.get('type') == 'blob' and e.get('path')}
 
 
 def _copiar(origen, destino):
@@ -146,23 +170,25 @@ def _copiar(origen, destino):
     os.replace(temporal, destino)       # el archivo viejo se reemplaza entero o no se toca
 
 
-def respaldar(programa, actual):
-    'Copia de toda la version instalada; se verifica apenas se crea (mismos archivos, mismos tamaños).'
-    destino = os.path.join(programa, CARPETA_RESPALDOS, actual + '_' + time.strftime('%Y%m%d_%H%M%S'))
-    lista = sorted(archivos(programa))
-    for r in lista:
+def apartar(programa, pisados):
+    'Copia de los archivos que se van a pisar; se verifica apenas se crea (mismos archivos, mismos tamaños).'
+    destino = os.path.join(programa, EN_CURSO)
+    if os.path.exists(destino):
+        # resto de una actualizacion cortada (un corte de luz): la carpeta quedo a medio camino entre dos versiones y
+        # esta actualizacion pisa todos los archivos del programa igual, asi que ese resto ya no sirve para volver.
+        _borrar(destino)
+    for r in pisados:
         _copiar(os.path.join(programa, r), os.path.join(destino, r))
-    copiados = sorted(archivos(destino))
-    if copiados != lista or any(os.path.getsize(os.path.join(programa, r)) != os.path.getsize(os.path.join(destino, r))
-                                for r in lista):
-        raise ErrorActualizacion('El respaldo de la version actual no quedo completo: no actualizo. Respaldo: ' + destino)
+    for r in pisados:
+        if os.path.getsize(os.path.join(programa, r)) != os.path.getsize(os.path.join(destino, r)):
+            raise ErrorActualizacion(f'La copia de {r} no quedo igual: no actualizo.')
     return destino
 
 
-def restaurar(respaldo, programa, agregados):
-    'Vuelve al estado del respaldo: repone todos sus archivos y borra los que agrego la actualizacion.'
-    for r in archivos(respaldo):
-        _copiar(os.path.join(respaldo, r), os.path.join(programa, r))
+def restaurar(apartados, programa, agregados):
+    'Vuelve a la version anterior: repone los archivos pisados y borra los que agrego la actualizacion.'
+    for r in archivos(apartados):
+        _copiar(os.path.join(apartados, r), os.path.join(programa, r))
     for r in agregados:
         try:
             os.remove(os.path.join(programa, r))
@@ -170,21 +196,57 @@ def restaurar(respaldo, programa, agregados):
             pass
 
 
-def _chequear_git(programa, correr=subprocess.run):
-    'Una carpeta clonada con git y con cambios sin commitear no se pisa: esos cambios no estan en ningun otro lado.'
-    if not os.path.isdir(os.path.join(programa, '.git')):
-        return
-    try:
-        r = correr(['git', '-C', programa, 'status', '--porcelain'], capture_output=True, text=True, timeout=30,
-                   creationflags=SIN_VENTANA)
-    except OSError:
-        raise ErrorActualizacion('Esta carpeta es un repositorio de git y no encuentro git para ver si tiene cambios '
-                                 'sin guardar. Actualizala con git (git pull).') from None
-    if r.returncode != 0:
-        raise ErrorActualizacion('Esta carpeta es un repositorio de git y git no pudo revisarla: ' + r.stderr.strip())
-    if r.stdout.strip():
-        raise ErrorActualizacion('Esta carpeta es un repositorio de git con cambios sin commitear: no la piso. '
-                                 'Commitealos o actualiza con git pull.')
+def _borrar(ruta):
+    'Borra un archivo o una carpeta entera. Los objetos de .git son de solo lectura: se les saca esa marca y se reintenta.'
+    def solo_lectura(funcion, camino, _):
+        os.chmod(camino, stat.S_IWRITE)
+        funcion(camino)
+    if os.path.isdir(ruta) and not os.path.islink(ruta):
+        shutil.rmtree(ruta, onerror=solo_lectura)
+    elif os.path.lexists(ruta):
+        try:
+            os.remove(ruta)
+        except PermissionError:
+            os.chmod(ruta, stat.S_IWRITE)
+            os.remove(ruta)
+
+
+def limpiar(programa, nuevos, viejos):
+    """Con la version nueva ya instalada, borra lo que no es de ella ni del usuario. Devuelve avisos: lo que no se pudo
+    borrar (un archivo abierto, por ejemplo) y si no se supo cuales eran los archivos de la version anterior."""
+    avisos = []
+    borrar = [os.path.join(programa, n) for n in sorted(BORRAR | {EN_CURSO})]
+    for carpeta, subcarpetas, _ in os.walk(programa):
+        if os.path.relpath(carpeta, programa) == '.':
+            subcarpetas[:] = [d for d in subcarpetas if d not in CONSERVAR | BORRAR | {EN_CURSO}]
+        if '__pycache__' in subcarpetas:
+            subcarpetas.remove('__pycache__')
+            borrar.append(os.path.join(carpeta, '__pycache__'))
+    if viejos is None:
+        avisos.append('No pude saber cuales eran los archivos de la version anterior: los que la nueva ya no trae '
+                      'quedaron en la carpeta (no molestan).')
+    else:
+        # sin distinguir mayusculas: en Windows 'Foo.py' y 'foo.py' son el mismo archivo
+        nuevos_ = {os.path.normcase(r) for r in nuevos}
+        for r in sorted(viejos):
+            if os.path.normcase(r) in nuevos_ or r.split(os.sep)[0] in CONSERVAR | BORRAR:
+                continue
+            borrar.append(os.path.join(programa, r))
+    carpetas = set()
+    for ruta in borrar:
+        if not os.path.lexists(ruta):
+            continue
+        try:
+            _borrar(ruta)
+            carpetas.add(os.path.dirname(ruta))
+        except OSError as exc:
+            avisos.append(f'No pude borrar {os.path.relpath(ruta, programa)} ({exc.strerror or exc}).')
+    # carpetas que quedaron vacias al sacar archivos viejos (de la mas profunda a la de arriba)
+    for c in sorted(carpetas, key=len, reverse=True):
+        while os.path.normcase(c) != os.path.normcase(programa) and os.path.isdir(c) and not os.listdir(c):
+            os.rmdir(c)
+            c = os.path.dirname(c)
+    return avisos
 
 
 def instalar_dependencias(programa, python=None, correr=subprocess.run):
@@ -198,33 +260,43 @@ def instalar_dependencias(programa, python=None, correr=subprocess.run):
         raise ErrorActualizacion('No pude instalar las bibliotecas nuevas:\n' + ultimas)
 
 
-def aplicar(raiz, programa, actual, pip=instalar_dependencias, correr=subprocess.run):
-    """Instala la version de 'raiz' sobre 'programa'. Devuelve la carpeta del respaldo. Ante cualquier falla deja la
-    version anterior tal cual estaba y lo dice."""
-    _chequear_git(programa, correr)
-    respaldo = respaldar(programa, actual)
-    agregados = []
+def _leer_requisitos(ruta):
+    try:
+        with open(ruta, 'rb') as f:
+            # sin contar los fines de linea: una copia sacada con git en Windows tiene CRLF y el zip de GitHub LF
+            return f.read().replace(b'\r\n', b'\n')
+    except FileNotFoundError:
+        return None
+
+
+def aplicar(raiz, programa, actual, pip=instalar_dependencias, viejos=None):
+    """Instala la version de 'raiz' sobre 'programa' y despues borra lo que no es de ella ni del usuario ('viejos': los
+    archivos de la version anterior, o None si no se sabe). Devuelve avisos. Ante una falla antes de quedar instalada,
+    deja la version anterior tal cual estaba y lo dice."""
+    nuevos = sorted(archivos(raiz))
+    pisados = [r for r in nuevos if os.path.exists(os.path.join(programa, r))]
+    agregados = [r for r in nuevos if not os.path.exists(os.path.join(programa, r))]
+    req_antes = _leer_requisitos(os.path.join(programa, 'requirements.txt'))
+    apartados = os.path.join(programa, EN_CURSO)
     pip_corrio = False
     try:
-        for r in sorted(archivos(raiz)):
-            destino = os.path.join(programa, r)
-            if not os.path.exists(destino):
-                agregados.append(r)
-            _copiar(os.path.join(raiz, r), destino)
-        with open(os.path.join(respaldo, 'requirements.txt'), 'rb') as a, \
-                open(os.path.join(programa, 'requirements.txt'), 'rb') as b:
-            # sin contar los fines de linea: una copia sacada con git en Windows tiene CRLF y el zip de GitHub LF
-            cambiaron = a.read().replace(b'\r\n', b'\n') != b.read().replace(b'\r\n', b'\n')
-        if cambiaron:
+        apartar(programa, pisados)
+        for r in nuevos:
+            _copiar(os.path.join(raiz, r), os.path.join(programa, r))
+        if _leer_requisitos(os.path.join(programa, 'requirements.txt')) != req_antes:
             pip_corrio = True
             pip(programa)
     except Exception as exc:
         motivo = str(exc)
         try:
-            restaurar(respaldo, programa, agregados)
+            restaurar(apartados, programa, agregados)
         except Exception as exc2:
             raise ErrorActualizacion(f'Fallo la actualizacion ({motivo}) y tampoco pude volver atras ({exc2}). '
-                                     f'La version anterior entera esta en {respaldo}.') from None
+                                     f'Los archivos de la version anterior estan en {apartados}.') from None
+        try:
+            _borrar(apartados)
+        except OSError:
+            pass
         extra = ''
         if pip_corrio:
             # pip pudo haber cambiado algunas bibliotecas antes de fallar: se vuelven a las versiones de la anterior.
@@ -234,20 +306,21 @@ def aplicar(raiz, programa, actual, pip=instalar_dependencias, correr=subprocess
                 extra = ('\nOjo: las bibliotecas pueden haber quedado a medio cambiar. Para arreglarlo: '
                          '"' + sys.executable.replace('pythonw.exe', 'python.exe') +
                          '" -E -s -m pip install -r requirements.txt (' + str(exc3)[:200] + ')')
-        raise ErrorActualizacion(f'Fallo la actualizacion: {motivo}\nVolvi a dejar la version {actual} como estaba '
-                                 f'(respaldo en {respaldo}).' + extra) from None
-    return respaldo
+        raise ErrorActualizacion(f'Fallo la actualizacion: {motivo}\nVolvi a dejar la version {actual} como '
+                                 'estaba.' + extra) from None
+    return limpiar(programa, nuevos, viejos)
 
 
 def actualizar(rel, programa=PROGRAMA, actual=version.VERSION, avance=None, abrir=urllib.request.urlopen,
                pip=instalar_dependencias):
-    'Todo el recorrido: bajar, validar, respaldar e instalar. Devuelve la carpeta del respaldo.'
+    'Todo el recorrido: bajar, validar, instalar y limpiar. Devuelve avisos (lista vacia si no hubo ninguno).'
     temporal = tempfile.mkdtemp(prefix='excelagent_actualizacion_')
     try:
         zip_path = descargar(rel['zip'], os.path.join(temporal, 'release.zip'), abrir, avance)
         raiz = extraer(zip_path, os.path.join(temporal, 'contenido'))
         validar(raiz, rel)
-        return aplicar(raiz, programa, actual, pip)
+        viejos = archivos_de_version('v' + actual, abrir=abrir)
+        return aplicar(raiz, programa, actual, pip, viejos)
     finally:
         shutil.rmtree(temporal, ignore_errors=True)
 

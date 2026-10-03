@@ -22,8 +22,8 @@ trae el suyo.
   el problema de copiar la carpeta con su `.venv` a otra PC (ver Entorno).
 - Instalarlo encima de una instalacion anterior la actualiza. Si la instalada es mas nueva (por el boton
   Actualizar), pregunta antes de volver atras.
-- Desinstalar (Configuracion de Windows > Aplicaciones) borra el programa, su Python y tesseract, pero deja `logs\`,
-  `_versiones_anteriores\` y cualquier archivo agregado a mano. La configuracion y la API key (en %APPDATA%) no se
+- Desinstalar (Configuracion de Windows > Aplicaciones) borra el programa, su Python y tesseract, pero deja `logs\`
+  y cualquier archivo agregado a mano. La configuracion y la API key (en %APPDATA%) no se
   tocan, ni al instalar ni al desinstalar.
 
 Armar el instalador (PC de desarrollo; hace falta Inno Setup 6, Python 3.13 de python.org y `..\tesseract`):
@@ -204,15 +204,21 @@ La version va en el titulo de la ventana (`ExcelAgent 1.0.0 - asesor de Excel`) 
 - El boton **Actualizar** la busca, muestra sus notas y pregunta antes de instalar. Despues:
   1. baja el zip de la release y comprueba que sea ExcelAgent y que la version de adentro coincida con la
      etiqueta;
-  2. guarda una copia entera de la version instalada en `_versiones_anteriores\<version>_<fecha>` y la verifica;
-  3. copia los archivos nuevos. Si `requirements.txt` cambio, instala las bibliotecas en el Python del programa (`..\python` o `..\.venv`).
-- Si algo falla a mitad de camino, vuelve a dejar la version anterior tal cual estaba y lo dice.
-- No toca `logs\`, la configuracion (en %APPDATA%), `..\python`, `..\.venv` ni `..\tesseract`.
-- No borra archivos que la version nueva ya no traiga.
-- Si la carpeta es un clon de git con cambios sin commitear, no la pisa: hay que usar `git pull`.
+  2. aparta en `_actualizacion_en_curso\` los archivos que va a pisar y comprueba la copia;
+  3. copia los archivos nuevos. Si `requirements.txt` cambio, instala las bibliotecas en el Python del programa
+     (`..\python` o `..\.venv`);
+  4. borra lo que ya no es del programa: los archivos de la version anterior que la nueva no trae (la lista sale
+     de GitHub, de la etiqueta de la version instalada), `.git\`, `_versiones_anteriores\`, los `__pycache__\` y
+     `_actualizacion_en_curso\`.
+- Solo se conservan las personalizaciones: la configuracion y la API key (en %APPDATA%), `data\` y `portable.flag`
+  (configuracion portable), `Models\`, `bin\`, `logs\` y cualquier archivo que no sea del programa (planillas,
+  notas). Una modificacion a un archivo del programa se pisa.
+- Si no puede saber que archivos traia la version anterior (sin internet o version no publicada), no borra ningun
+  archivo dudoso y lo avisa en el registro. Lo mismo si no puede borrar alguno (por ejemplo, abierto).
+- Si algo falla antes de terminar el paso 3, vuelve a dejar la version anterior tal cual estaba y lo dice.
+- No toca `..\python`, `..\.venv` ni `..\tesseract`.
 - Al terminar ofrece reiniciar el programa.
-- Para volver a una version anterior a mano, copiar el contenido de su carpeta en `_versiones_anteriores` sobre la
-  del programa.
+- Para volver a una version anterior: bajar su instalador de la pagina de releases e instalarlo.
 
 Publicar una version nueva (desde la PC de desarrollo):
 
@@ -258,7 +264,7 @@ instalador publicado y compara su SHA-256 con el armado. Si algo falla con la et
     contactos.py      Contactos exportados del telefono (.vcf) o en CSV; telefonos como texto
     secret.py         Cifrado de la key con contrasena
     version.py        Numero de version (titulo de la ventana y etiqueta de la release)
-    actualizar.py     Boton Actualizar: baja la ultima release de GitHub, respalda e instala
+    actualizar.py     Boton Actualizar: baja la ultima release de GitHub, la instala y borra lo que ya no es del programa
     publicar.ps1      Publica una version como release de GitHub, con el instalador adjunto
     limpiar_temporales.ps1   Borra los restos de desarrollo de la version anterior (probar con -WhatIf)
     tests\            Pruebas

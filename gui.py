@@ -908,8 +908,8 @@ class Ventana:
         notas = rel['notas'] if len(rel['notas']) <= 1500 else rel['notas'][:1500] + '...'
         pregunta = (f'Hay una version nueva: {rel["nombre"]} (tenes la {version.VERSION}).\n\n'
                     + (notas + '\n\n' if notas else '')
-                    + 'La instalo? Antes guardo una copia entera de la version actual en la carpeta '
-                      f'{actualizar.CARPETA_RESPALDOS}; si algo falla, vuelvo a dejarla como esta.')
+                    + 'La instalo? Se conserva tu configuracion; si algo falla, vuelvo a dejar la version actual '
+                      'como esta.')
         if not messagebox.askyesno('Actualizar', pregunta):
             self._fin_actualizar()
             return
@@ -925,18 +925,20 @@ class Ventana:
 
         def instalar():
             try:
-                respaldo = actualizar.actualizar(rel, avance=avance)
+                avisos = actualizar.actualizar(rel, avance=avance)
             except Exception as exc:
                 error = str(exc)        # 'exc' deja de existir al salir del except; la lambda corre despues
                 self.post(lambda: self._fin_actualizar(error))
                 return
-            self.post(lambda: self._version_instalada(rel, respaldo))
+            self.post(lambda: self._version_instalada(rel, avisos))
         threading.Thread(target=instalar, daemon=True).start()
 
-    def _version_instalada(self, rel, respaldo):
+    def _version_instalada(self, rel, avisos):
         self._fin_actualizar()
         self.bus.progreso(100, 'Version ' + rel['version'] + ' instalada')
-        self.bus.log(f'Version {rel["version"]} instalada. La anterior quedo guardada en {respaldo}.')
+        self.bus.log(f'Version {rel["version"]} instalada.', 'ok')
+        for aviso in avisos:
+            self.bus.log('Actualizar: ' + aviso, 'warn')
         if messagebox.askyesno('Actualizar', f'Listo: quedo instalada la version {rel["version"]}.\n\n'
                                              'La reinicio ahora? (si no, arranca la proxima vez que abras ExcelAgent)'):
             self._al_cerrar()

@@ -379,7 +379,8 @@ def test_boton_actualizar(monkeypatch):
     monkeypatch.setattr(gui.messagebox, 'askyesno', lambda t, m: dialogos.append(('pregunta', m)) or next(respuestas))
     instaladas = []
     monkeypatch.setattr(gui.actualizar, 'actualizar',
-                        lambda rel, avance=None: (avance(50, 100), instaladas.append(rel['version']), 'C:/respaldo')[-1])
+                        lambda rel, avance=None: (avance(50, 100), instaladas.append(rel['version']),
+                                                  ['No pude borrar obsoleto.py (en uso).'])[-1])
     monkeypatch.setattr(gui.actualizar, 'relanzar', lambda: instaladas.append('relanzo'))
     rel = {'tag': 'v' + gui.version.VERSION, 'version': gui.version.VERSION, 'nombre': 'misma', 'notas': ''}
     monkeypatch.setattr(gui.actualizar, 'ultima_release', lambda: dict(rel))
@@ -399,7 +400,9 @@ def test_boton_actualizar(monkeypatch):
         assert 'Cosas nuevas' in dialogos[0][1] and 'Version 99' in dialogos[0][1]
         assert 'instalada la version 99.0.0' in dialogos[1][1]
         assert instaladas == ['99.0.0']
-        assert int(v.pct.get()) == 100 and 'C:/respaldo' in v.log.get('1.0', 'end')
+        registro = v.log.get('1.0', 'end')
+        assert int(v.pct.get()) == 100 and 'Version 99.0.0 instalada.' in registro
+        assert 'No pude borrar obsoleto.py (en uso).' in registro       # los avisos de la limpieza se muestran
         # 3) un error se muestra y el boton vuelve a andar
         dialogos.clear()
         monkeypatch.setattr(gui.actualizar, 'ultima_release',
